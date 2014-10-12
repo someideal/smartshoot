@@ -1,3 +1,3 @@
 smartshoot
 ==========
-This is a project created by SomeIdeal Team.
+This is a project created by SomeIdeal Team. 
