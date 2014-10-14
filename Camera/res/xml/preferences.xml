@@ -161,6 +161,15 @@
                 android:defaultValue="false"
                 />
 
+            <ListPreference 
+                android:key="preference_rotate_preview"
+                android:title="@string/preference_rotate_preview"
+                android:summary="@string/preference_rotate_preview_summary"
+                android:entries="@array/preference_rotate_preview_entries"
+                android:entryValues="@array/preference_rotate_preview_values"
+                android:defaultValue="0"
+                />
+        
             </PreferenceScreen>
 
 	    <PreferenceScreen
@@ -242,6 +251,15 @@
                 android:entries="@array/preference_grid_entries"
                 android:entryValues="@array/preference_grid_values"
                 android:defaultValue="preference_grid_none"
+                />
+
+            <ListPreference 
+                android:key="preference_crop_guide"
+                android:title="@string/preference_crop_guide"
+                android:summary="@string/preference_crop_guide_summary"
+                android:entries="@array/preference_crop_guide_entries"
+                android:entryValues="@array/preference_crop_guide_values"
+                android:defaultValue="crop_guide_none"
                 />
             
             <CheckBoxPreference

@@ -5,9 +5,13 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Hashtable;
 import java.util.List;
+import java.util.Map;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.Matrix;
 import android.hardware.Camera;
 import android.hardware.Sensor;
@@ -19,6 +23,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -54,8 +59,10 @@ import android.view.Surface;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver.OnGlobalLayoutListener;
 import android.view.WindowManager;
-import android.view.WindowManager.LayoutParams;
+import android.view.animation.Animation;
+import android.view.animation.ScaleAnimation;
 import android.widget.ImageButton;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
@@ -82,9 +89,11 @@ public class MainActivity extends Activity {
 	private boolean camera_in_background = false; // whether the camera is covered by a fragment/dialog (such as settings or folder picker)
     private GestureDetector gestureDetector;
     private boolean screen_is_locked = false;
+    private Map<Integer, Bitmap> preloaded_bitmap_resources = new Hashtable<Integer, Bitmap>();
+    private PopupView popup_view = null;
 
     private ToastBoxer screen_locked_toast = new ToastBoxer();
-    private ToastBoxer changed_auto_stabilise_toast = new ToastBoxer();
+    ToastBoxer changed_auto_stabilise_toast = new ToastBoxer();
     
 	// for testing:
 	public boolean is_test = false;
@@ -208,9 +217,45 @@ public class MainActivity extends Activity {
 			editor.apply();
         }
 
+        preloadIcons(R.array.flash_icons);
+        preloadIcons(R.array.focus_mode_icons);
+
 		if( MyDebug.LOG )
 			Log.d(TAG, "time for Activity startup: " + (System.currentTimeMillis() - time_s));
 	}
+	
+	private void preloadIcons(int icons_id) {
+    	long time_s = System.currentTimeMillis();
+    	String [] icons = getResources().getStringArray(icons_id);
+    	for(int i=0;i<icons.length;i++) {
+    		int resource = getResources().getIdentifier(icons[i], null, this.getApplicationContext().getPackageName());
+    		if( MyDebug.LOG )
+    			Log.d(TAG, "load resource: " + resource);
+    		Bitmap bm = BitmapFactory.decodeResource(getResources(), resource);
+    		this.preloaded_bitmap_resources.put(resource, bm);
+    	}
+		if( MyDebug.LOG ) {
+			Log.d(TAG, "time for preloadIcons: " + (System.currentTimeMillis() - time_s));
+			Log.d(TAG, "size of preloaded_bitmap_resources: " + preloaded_bitmap_resources.size());
+		}
+	}
+	
+	@Override
+	protected void onDestroy() {
+		if( MyDebug.LOG ) {
+			Log.d(TAG, "onDestroy");
+			Log.d(TAG, "size of preloaded_bitmap_resources: " + preloaded_bitmap_resources.size());
+		}
+		// Need to recycle to avoid out of memory when running tests - probably good practice to do anyway
+		for(Map.Entry<Integer, Bitmap> entry : preloaded_bitmap_resources.entrySet()) {
+			if( MyDebug.LOG )
+				Log.d(TAG, "recycle: " + entry.getKey());
+			entry.getValue().recycle();
+		}
+		preloaded_bitmap_resources.clear();
+		super.onDestroy();
+	}
+	
 	
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
@@ -400,6 +445,7 @@ public class MainActivity extends Activity {
 		if( MyDebug.LOG )
 			Log.d(TAG, "onPause");
         super.onPause();
+		closePopup();
         mSensorManager.unregisterListener(accelerometerListener);
         mSensorManager.unregisterListener(magneticListener);
         orientationEventListener.disable();
@@ -407,6 +453,8 @@ public class MainActivity extends Activity {
             mLocationManager.removeUpdates(locationListener);
             locationListener = null;
         }
+		// reset location, as may be out of date when resumed - the location listener is reinitialised when resuming
+        preview.resetLocation();
 		preview.onPause();
     }
 
@@ -481,11 +529,20 @@ public class MainActivity extends Activity {
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			view = findViewById(R.id.exposure_lock);
+			view = findViewById(R.id.popup);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
 			layoutParams.addRule(align_parent_bottom, 0);
 			layoutParams.addRule(left_of, R.id.gallery);
+			layoutParams.addRule(right_of, 0);
+			view.setLayoutParams(layoutParams);
+			view.setRotation(ui_rotation);
+	
+			view = findViewById(R.id.exposure_lock);
+			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
+			layoutParams.addRule(align_parent_bottom, 0);
+			layoutParams.addRule(left_of, R.id.popup);
 			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
@@ -499,29 +556,11 @@ public class MainActivity extends Activity {
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			view = findViewById(R.id.focus_mode);
-			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
-			layoutParams.addRule(align_parent_bottom, 0);
-			layoutParams.addRule(left_of, R.id.exposure);
-			layoutParams.addRule(right_of, 0);
-			view.setLayoutParams(layoutParams);
-			view.setRotation(ui_rotation);
-	
-			view = findViewById(R.id.flash);
-			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
-			layoutParams.addRule(align_parent_bottom, 0);
-			layoutParams.addRule(left_of, R.id.focus_mode);
-			layoutParams.addRule(right_of, 0);
-			view.setLayoutParams(layoutParams);
-			view.setRotation(ui_rotation);
-	
 			view = findViewById(R.id.switch_video);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
 			layoutParams.addRule(align_parent_bottom, 0);
-			layoutParams.addRule(left_of, R.id.flash);
+			layoutParams.addRule(left_of, R.id.exposure);
 			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
@@ -622,7 +661,48 @@ public class MainActivity extends Activity {
 				view.setTranslationY(0);
 			}
 		}
-		
+
+		{
+			View view = findViewById(R.id.popup_container);
+			RelativeLayout.LayoutParams layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
+			//layoutParams.addRule(left_of, R.id.popup);
+			layoutParams.addRule(align_right, R.id.popup);
+			layoutParams.addRule(below, R.id.popup);
+			layoutParams.addRule(align_parent_bottom, RelativeLayout.TRUE);
+			layoutParams.addRule(above, 0);
+			layoutParams.addRule(align_parent_top, 0);
+			view.setLayoutParams(layoutParams);
+
+			view.setRotation(ui_rotation);
+			// reset:
+			view.setTranslationX(0.0f);
+			view.setTranslationY(0.0f);
+			if( MyDebug.LOG ) {
+				Log.d(TAG, "popup view width: " + view.getWidth());
+				Log.d(TAG, "popup view height: " + view.getHeight());
+			}
+			if( ui_rotation == 0 || ui_rotation == 180 ) {
+				view.setPivotX(view.getWidth()/2.0f);
+				view.setPivotY(view.getHeight()/2.0f);
+			}
+			else {
+				view.setPivotX(view.getWidth());
+				view.setPivotY(ui_placement_right ? 0.0f : view.getHeight());
+				if( ui_placement_right ) {
+					if( ui_rotation == 90 )
+						view.setTranslationY( view.getWidth() );
+					else if( ui_rotation == 270 )
+						view.setTranslationX( - view.getHeight() );
+				}
+				else {
+					if( ui_rotation == 90 )
+						view.setTranslationX( - view.getHeight() );
+					else if( ui_rotation == 270 )
+						view.setTranslationY( - view.getWidth() );
+				}
+			}
+		}
+
 		{
 			// set icon for taking photos vs videos
 			ImageButton view = (ImageButton)findViewById(R.id.take_photo);
@@ -676,12 +756,14 @@ public class MainActivity extends Activity {
     public void clickedSwitchCamera(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedSwitchCamera");
+		this.closePopup();
 		this.preview.switchCamera();
     }
 
     public void clickedSwitchVideo(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedSwitchVideo");
+		this.closePopup();
 		this.preview.switchVideo(true, true);
     }
 
@@ -714,6 +796,7 @@ public class MainActivity extends Activity {
     public void clickedExposure(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedExposure");
+		this.closePopup();
 		SeekBar seek_bar = ((SeekBar)findViewById(R.id.seekbar));
 		int visibility = seek_bar.getVisibility();
 		if( visibility == View.GONE && preview.getCamera() != null && preview.supportsExposures() ) {
@@ -761,16 +844,110 @@ public class MainActivity extends Activity {
 			Log.d(TAG, "clickedExposureLock");
     	this.preview.toggleExposureLock();
     }
-
+    
     public void clickedSettings(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedSettings");
 		openSettings();
     }
+
+    public boolean popupIsOpen() {
+		if( popup_view != null ) {
+			return true;
+		}
+		return false;
+    }
+
+    // for testing
+    public View getPopupButton(String key) {
+    	return popup_view.getPopupButton(key);
+    }
+
+    void closePopup() {
+		if( MyDebug.LOG )
+			Log.d(TAG, "close popup");
+		if( popupIsOpen() ) {
+			ViewGroup popup_container = (ViewGroup)findViewById(R.id.popup_container);
+			popup_container.removeAllViews();
+			popup_view.close();
+			popup_view = null;
+		}
+    }
+    
+    Bitmap getPreloadedBitmap(int resource) {
+		Bitmap bm = this.preloaded_bitmap_resources.get(resource);
+		return bm;
+    }
+
+    public void clickedPopupSettings(View view) {
+		if( MyDebug.LOG )
+			Log.d(TAG, "clickedPopupSettings");
+		final ViewGroup popup_container = (ViewGroup)findViewById(R.id.popup_container);
+		if( popupIsOpen() ) {
+			closePopup();
+			return;
+		}
+		if( preview.getCamera() == null ) {
+			if( MyDebug.LOG )
+				Log.d(TAG, "camera not opened!");
+			return;
+		}
+
+		if( MyDebug.LOG )
+			Log.d(TAG, "open popup");
+
+		clearSeekBar();
+		preview.cancelTimer(); // best to cancel any timer, in case we take a photo while settings window is open, or when changing settings
+
+    	final long time_s = System.currentTimeMillis();
+
+    	{
+			// prevent popup being transparent
+			popup_container.setBackgroundColor(Color.BLACK);
+			popup_container.setAlpha(0.95f);
+		}
+
+    	popup_view = new PopupView(this);
+		popup_container.addView(popup_view);
+		
+        // need to call layoutUI to make sure the new popup is oriented correctly
+		// but need to do after the layout has been done, so we have a valid width/height to use
+		popup_container.getViewTreeObserver().addOnGlobalLayoutListener( 
+			new OnGlobalLayoutListener() {
+				@SuppressWarnings("deprecation")
+			    @SuppressLint("NewApi")
+				@Override
+			    public void onGlobalLayout() {
+					if( MyDebug.LOG )
+						Log.d(TAG, "onGlobalLayout()");
+					if( MyDebug.LOG )
+						Log.d(TAG, "time after global layout: " + (System.currentTimeMillis() - time_s));
+		    		layoutUI();
+					if( MyDebug.LOG )
+						Log.d(TAG, "time after layoutUI: " + (System.currentTimeMillis() - time_s));
+		    		// stop listening - only want to call this once!
+		            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
+		            	popup_container.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+		            } else {
+		            	popup_container.getViewTreeObserver().removeGlobalOnLayoutListener(this);
+		            }
+
+		            ScaleAnimation animation = new ScaleAnimation(0.0f, 1.0f, 0.0f, 1.0f, Animation.RELATIVE_TO_SELF, 1.0f, Animation.RELATIVE_TO_SELF, 0.0f);
+		    		animation.setDuration(100);
+		    		popup_container.setAnimation(animation);
+		        }
+			}
+		);
+
+		if( MyDebug.LOG )
+			Log.d(TAG, "time to create popup: " + (System.currentTimeMillis() - time_s));
+    }
     
     private void openSettings() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "openSettings");
+		closePopup();
+		preview.cancelTimer(); // best to cancel any timer, in case we take a photo while settings window is open, or when changing settings
 		preview.stopVideo(false); // important to stop video, as we'll be changing camera parameters when the settings window closes
 		
 		Bundle bundle = new Bundle();
@@ -855,11 +1032,19 @@ public class MainActivity extends Activity {
     }
 
     public void updateForSettings() {
-		if( MyDebug.LOG )
+    	updateForSettings(null);
+    }
+
+    public void updateForSettings(String toast_message) {
+		if( MyDebug.LOG ) {
 			Log.d(TAG, "updateForSettings()");
+			if( toast_message != null ) {
+				Log.d(TAG, "toast_message: " + toast_message);
+			}
+		}
     	String saved_focus_value = null;
     	if( preview.getCamera() != null && preview.isVideo() && !preview.focusIsVideo() ) {
-    		saved_focus_value = preview.getFocusValue(); // n.b., may still be null
+    		saved_focus_value = preview.getCurrentFocusValue(); // n.b., may still be null
 			// make sure we're into continuous video mode
 			// workaround for bug on Samsung Galaxy S5 with UHD, where if the user switches to another (non-continuous-video) focus mode, then goes to Settings, then returns and records video, the preview freezes and the video is corrupted
 			// so to be safe, we always reset to continuous video mode, and then reset it afterwards
@@ -891,17 +1076,18 @@ public class MainActivity extends Activity {
         setupLocationListener(); // in case we've enabled GPS
 		if( need_reopen || preview.getCamera() == null ) { // if camera couldn't be opened before, might as well try again
 			preview.onPause();
-			preview.onResume();
+			preview.onResume(toast_message);
 		}
 		else {
+			preview.setCameraDisplayOrientation(this); // need to call in case the preview rotation option was changed
 			preview.pausePreview();
-			preview.setupCamera();
+			preview.setupCamera(toast_message);
 		}
 
     	if( saved_focus_value != null ) {
 			if( MyDebug.LOG )
 				Log.d(TAG, "switch focus back to: " + saved_focus_value);
-    		preview.updateFocus(saved_focus_value);
+    		preview.updateFocus(saved_focus_value, true, false);
     	}
     }
     
@@ -927,6 +1113,12 @@ public class MainActivity extends Activity {
 			setWindowFlagsForCamera();
 			updateForSettings();
         }
+        else {
+			if( popupIsOpen() ) {
+    			closePopup();
+    			return;
+    		}
+        }
         super.onBackPressed();        
     }
     
@@ -951,13 +1143,13 @@ public class MainActivity extends Activity {
 		// force to landscape mode
 		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 		// keep screen active - see http://stackoverflow.com/questions/2131948/force-screen-on
-        getWindow().addFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		if( sharedPreferences.getBoolean("preference_show_when_locked", true) ) {
 	        // keep Open Camera on top of screen-lock (will still need to unlock when going to gallery or settings)
-			getWindow().addFlags(LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+			getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
 		}
 		else {
-	        getWindow().clearFlags(LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+	        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
 		}
 
         // set screen to max brightness - see http://stackoverflow.com/questions/11978042/android-screen-brightness-max-value
@@ -982,9 +1174,9 @@ public class MainActivity extends Activity {
 		// allow screen rotation
 		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
 		// revert to standard screen blank behaviour
-        getWindow().clearFlags(LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         // settings should still be protected by screen lock
-        getWindow().clearFlags(LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
 
 		{
 	        WindowManager.LayoutParams layout = getWindow().getAttributes();
@@ -1368,6 +1560,7 @@ public class MainActivity extends Activity {
     private void takePicture() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "takePicture");
+		closePopup();
     	this.preview.takePicturePressed();
     }
     
@@ -1615,11 +1808,11 @@ public class MainActivity extends Activity {
     	return "market://details?id=harman.mark.donation";
     }*/
 
-    // for testing:
     public Preview getPreview() {
     	return this.preview;
     }
 
+    // for testing:
 	public ArrayList<String> getSaveLocationHistory() {
 		return this.save_location_history;
 	}

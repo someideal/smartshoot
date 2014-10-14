@@ -85,6 +85,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	private RectF face_rect = new RectF();
 	private Rect text_bounds = new Rect();
     private int display_orientation = 0;
+    private double preview_targetRatio = 0.0;
 
 	private boolean ui_placement_right = true;
 
@@ -100,6 +101,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	private boolean video_start_time_set = false;
 	private long video_start_time = 0;
 	private String video_name = null;
+	private boolean has_current_fps_range = false;
 	private int [] current_fps_range = new int[2];
 
 	private final int PHASE_NORMAL = 0;
@@ -235,11 +237,12 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	public int count_cameraStartPreview = 0;
 	public int count_cameraAutoFocus = 0;
 	public int count_cameraTakePicture = 0;
-	public boolean has_received_location = false;
+	public boolean test_has_received_location = false;
 	public boolean test_low_memory = false;
 	public boolean test_have_angle = false;
 	public float test_angle = 0.0f;
 	public String test_last_saved_image = null;
+	public int count_camera_parameters_exception = 0;
 
 	Preview(Context context) {
 		this(context, null);
@@ -368,6 +371,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
         }
 		MainActivity main_activity = (MainActivity)this.getContext();
 		main_activity.clearSeekBar();
+		main_activity.closePopup();
         //invalidate();
 		/*if( MyDebug.LOG ) {
 			Log.d(TAG, "touch event: " + event.getAction());
@@ -422,19 +426,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			    	parameters.setMeteringAreas(areas);
 			    }
 
-			    try {
-	        		if( MyDebug.LOG )
-	        			Log.d(TAG, "set focus areas parameters");
-			    	camera.setParameters(parameters);
-	        		if( MyDebug.LOG )
-	        			Log.d(TAG, "done");
-			    }
-			    catch(RuntimeException e) {
-			    	// just in case something has gone wrong
-	        		if( MyDebug.LOG )
-	        			Log.d(TAG, "failed to set parameters for focus area");
-	        		e.printStackTrace();
-			    }
+			    setCameraParameters(parameters);
             }
             else if( parameters.getMaxNumMeteringAreas() != 0 ) {
         		if( MyDebug.LOG )
@@ -443,15 +435,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				ArrayList<Camera.Area> areas = getAreas(event.getX(), event.getY());
 		    	parameters.setMeteringAreas(areas);
 
-			    try {
-			    	camera.setParameters(parameters);
-			    }
-			    catch(RuntimeException e) {
-			    	// just in case something has gone wrong
-	        		if( MyDebug.LOG )
-	        			Log.d(TAG, "failed to set parameters for focus area");
-	        		e.printStackTrace();
-			    }
+			    setCameraParameters(parameters);
             }
         }
         
@@ -489,7 +473,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
         	update_parameters = true;
         }
         if( update_parameters ) {
-        	camera.setParameters(parameters);
+		    setCameraParameters(parameters);
         }
 		has_focus_area = false;
 		focus_success = FOCUS_DONE;
@@ -497,9 +481,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
         //Log.d(TAG, "camera parameters null? " + (camera.getParameters().getFocusAreas()==null));
     }
 
-    /*private void setCameraParameters() {
-	}*/
-	
 	public void surfaceCreated(SurfaceHolder holder) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "surfaceCreated()");
@@ -696,24 +677,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		focus_success = FOCUS_DONE;
 		set_flash_after_autofocus = "";
 		successfully_focused = false;
-        has_set_location = false;
-		has_received_location = false;
+		preview_targetRatio = 0.0;
+		// n.b., don't reset has_set_location, as we can remember the location when switching camera
 		MainActivity main_activity = (MainActivity)this.getContext();
 		main_activity.clearSeekBar();
-		//if( is_taking_photo_on_timer ) {
-		if( this.isOnTimer() ) {
-			takePictureTimerTask.cancel();
-			takePictureTimerTask = null;
-			if( beepTimerTask != null ) {
-				beepTimerTask.cancel();
-				beepTimerTask = null;
-			}
-			/*is_taking_photo_on_timer = false;
-			is_taking_photo = false;*/
-    		this.phase = PHASE_NORMAL;
-			if( MyDebug.LOG )
-				Log.d(TAG, "cancelled camera timer");
-		}
+		cancelTimer();
 		if( camera != null ) {
 			if( video_recorder != null ) {
 				stopVideo(false);
@@ -731,6 +699,24 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				camera.release();
 				camera = null;
 			}
+		}
+	}
+	
+	void cancelTimer() {
+		if( MyDebug.LOG )
+			Log.d(TAG, "cancelTimer()");
+		if( this.isOnTimer() ) {
+			takePictureTimerTask.cancel();
+			takePictureTimerTask = null;
+			if( beepTimerTask != null ) {
+				beepTimerTask.cancel();
+				beepTimerTask = null;
+			}
+			/*is_taking_photo_on_timer = false;
+			is_taking_photo = false;*/
+    		this.phase = PHASE_NORMAL;
+			if( MyDebug.LOG )
+				Log.d(TAG, "cancelled camera timer");
 		}
 	}
 	
@@ -759,6 +745,10 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	//private int debug_count_opencamera = 0; // see usage below
 
 	private void openCamera() {
+		openCamera(null);
+	}
+	
+	private void openCamera(String toast_message) {
 		long debug_time = 0;
 		if( MyDebug.LOG ) {
 			Log.d(TAG, "openCamera()");
@@ -766,12 +756,12 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			debug_time = System.currentTimeMillis();
 		}
 		// need to init everything now, in case we don't open the camera (but these may already be initialised from an earlier call - e.g., if we are now switching to another camera)
-        has_set_location = false;
-		has_received_location = false;
+		// n.b., don't reset has_set_location, as we can remember the location when switching camera
 		has_focus_area = false;
 		focus_success = FOCUS_DONE;
 		set_flash_after_autofocus = "";
 		successfully_focused = false;
+		preview_targetRatio = 0.0;
 		scene_modes = null;
 		has_zoom = false;
 		max_zoom_factor = 0;
@@ -862,7 +852,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		    View switchCameraButton = (View) activity.findViewById(R.id.switch_camera);
 		    switchCameraButton.setVisibility(Camera.getNumberOfCameras() > 1 ? View.VISIBLE : View.GONE);
 
-		    setupCamera();
+		    setupCamera(toast_message);
 		}
 
 		if( MyDebug.LOG ) {
@@ -875,174 +865,287 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	
 	/* Should only be called after camera first opened, or after preview is paused.
 	 */
-	void setupCamera() {
+	void setupCamera(String toast_message) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "setupCamera()");
+		/*long debug_time = 0;
+		if( MyDebug.LOG ) {
+			debug_time = System.currentTimeMillis();
+		}*/
 		if( camera == null ) {
 			if( MyDebug.LOG )
 				Log.d(TAG, "camera not opened!");
 			return;
 		}
 		if( this.is_video ) {
-			// make sure we're into continuous video mode for closing
+			// make sure we're into continuous video mode for reopening
 			// workaround for bug on Samsung Galaxy S5 with UHD, where if the user switches to another (non-continuous-video) focus mode, then goes to Settings, then returns and records video, the preview freezes and the video is corrupted
 			// so to be safe, we always reset to continuous video mode
 			// although I've now fixed this at the level where we close the settings, I've put this guard here, just in case the problem occurs from elsewhere
 			this.updateFocusForVideo(false);
 		}
 
+		setupCameraParameters();
+		
+		// now switch to video if saved
+		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
+		boolean saved_is_video = sharedPreferences.getBoolean(getIsVideoPreferenceKey(), false);
+		if( MyDebug.LOG ) {
+			Log.d(TAG, "saved_is_video: " + saved_is_video);
+		}
+		if( saved_is_video != this.is_video ) {
+			this.switchVideo(false, false);
+		}
+		else if( toast_message != null ) {
+			if( toast_message.length() > 0 )
+				showToast(null, toast_message);
+		}
+		else {
+			showPhotoVideoToast();
+		}
+
+		// Must set preview size before starting camera preview
+		// and must do it after setting photo vs video mode
+		setPreviewSize(); // need to call this when we switch cameras, not just when we run for the first time
+		// Must call startCameraPreview after checking if face detection is present - probably best to call it after setting all parameters that we want
+		startCameraPreview();
+		if( MyDebug.LOG ) {
+			//Log.d(TAG, "time after starting camera preview: " + (System.currentTimeMillis() - debug_time));
+		}
+
+		// must be done after setting parameters, as this function may set parameters
+		// also needs to be done after starting preview for some devices (e.g., Nexus 7)
+		if( this.has_zoom && zoom_factor != 0 ) {
+			int new_zoom_factor = zoom_factor;
+			zoom_factor = 0; // force zoomTo to actually update the zoom!
+			zoomTo(new_zoom_factor, true);
+		}
+
+    	final Handler handler = new Handler();
+		handler.postDelayed(new Runnable() {
+			@Override
+			public void run() {
+				tryAutoFocus(true, false); // so we get the autofocus when starting up - we do this on a delay, as calling it immediately means the autofocus doesn't seem to work properly sometimes (at least on Galaxy Nexus)
+			}
+		}, 500);
+	}
+
+	private void setupCameraParameters() {
+		if( MyDebug.LOG )
+			Log.d(TAG, "setupCameraParameters()");
+		long debug_time = 0;
+		if( MyDebug.LOG ) {
+			debug_time = System.currentTimeMillis();
+		}
 		Activity activity = (Activity)this.getContext();
 		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
 
-	    Camera.Parameters parameters = camera.getParameters();
-	    
-	    /*{
-	    	// test for Samsung Galaxy cameras
-	    	// from http://forum.xda-developers.com/showpost.php?p=39210051&postcount=27
-	    	parameters.set("mode", "m"); 
-        	// read back parameters, just to be safe
-        	camera.setParameters(parameters);
-			parameters = camera.getParameters();
-	    }*/
-
-		// get available scene modes
-		// important, from docs:
-		// "Changing scene mode may override other parameters (such as flash mode, focus mode, white balance).
-		// For example, suppose originally flash mode is on and supported flash modes are on/off. In night
-		// scene mode, both flash mode and supported flash mode may be changed to off. After setting scene
-		// mode, applications should call getParameters to know if some parameters are changed."
-		scene_modes = parameters.getSupportedSceneModes();
-		String scene_mode = setupValuesPref(scene_modes, getSceneModePreferenceKey(), Camera.Parameters.SCENE_MODE_AUTO);
-		if( scene_mode != null && !parameters.getSceneMode().equals(scene_mode) ) {
-        	parameters.setSceneMode(scene_mode);
-        	// need to read back parameters, see comment above
-        	camera.setParameters(parameters);
-			parameters = camera.getParameters();
-		}
-
-		this.has_zoom = parameters.isZoomSupported();
-		if( MyDebug.LOG )
-			Log.d(TAG, "has_zoom? " + has_zoom);
-	    ZoomControls zoomControls = (ZoomControls) activity.findViewById(R.id.zoom);
-	    SeekBar zoomSeekBar = (SeekBar) activity.findViewById(R.id.zoom_seekbar);
-		if( this.has_zoom ) {
-			this.max_zoom_factor = parameters.getMaxZoom();
-			try {
-				this.zoom_ratios = parameters.getZoomRatios();
-			}
-			catch(NumberFormatException e) {
-        		// crash java.lang.NumberFormatException: Invalid int: " 500" reported in v1.4 on device "es209ra", Android 4.1, 3 Jan 2014
-				// this is from java.lang.Integer.invalidInt(Integer.java:138) - unclear if this is a bug in Open Camera, all we can do for now is catch it
-	    		if( MyDebug.LOG )
-	    			Log.e(TAG, "NumberFormatException in getZoomRatios()");
-				e.printStackTrace();
-				this.has_zoom = false;
-				this.zoom_ratios = null;
-			}
-		}
-
-		if( this.has_zoom ) {
-			if( sharedPreferences.getBoolean("preference_show_zoom_controls", false) ) {
-			    zoomControls.setIsZoomInEnabled(true);
-		        zoomControls.setIsZoomOutEnabled(true);
-		        zoomControls.setZoomSpeed(20);
-
-		        zoomControls.setOnZoomInClickListener(new OnClickListener(){
-		            public void onClick(View v){
-		            	zoomIn();
-		            }
-		        });
-			    zoomControls.setOnZoomOutClickListener(new OnClickListener(){
-			    	public void onClick(View v){
-			    		zoomOut();
-			        }
-			    });
-				zoomControls.setVisibility(View.VISIBLE);
-			}
-			else {
-				zoomControls.setVisibility(View.INVISIBLE); // must be INVISIBLE not GONE, so we can still position the zoomSeekBar relative to it
-			}
-			
-			zoomSeekBar.setMax(max_zoom_factor);
-			zoomSeekBar.setProgress(max_zoom_factor-zoom_factor);
-			zoomSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
-				@Override
-				public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-					zoomTo(max_zoom_factor-progress, false);
-				}
-
-				@Override
-				public void onStartTrackingTouch(SeekBar seekBar) {
-				}
-
-				@Override
-				public void onStopTrackingTouch(SeekBar seekBar) {
-				}
-			});
-
-			if( sharedPreferences.getBoolean("preference_show_zoom_slider_controls", true) ) {
-				zoomSeekBar.setVisibility(View.VISIBLE);
-			}
-			else {
-				zoomSeekBar.setVisibility(View.INVISIBLE);
-			}
-		}
-		else {
-			zoomControls.setVisibility(View.GONE);
-			zoomSeekBar.setVisibility(View.GONE);
-		}
-		
-		// get face detection supported
-		this.faces_detected = null;
-		this.supports_face_detection = parameters.getMaxNumDetectedFaces() > 0;
-		if( this.supports_face_detection ) {
-			this.using_face_detection = sharedPreferences.getBoolean("preference_face_detection", false);
-		}
-		else {
-			this.using_face_detection = false;
-		}
-		if( MyDebug.LOG ) {
-			Log.d(TAG, "supports_face_detection?: " + supports_face_detection);
-			Log.d(TAG, "using_face_detection?: " + using_face_detection);
-		}
-		if( this.using_face_detection ) {
-			class MyFaceDetectionListener implements Camera.FaceDetectionListener {
-			    @Override
-			    public void onFaceDetection(Face[] faces, Camera camera) {
-			    	faces_detected = new Face[faces.length];
-			    	System.arraycopy(faces, 0, faces_detected, 0, faces.length);				    	
-			    }
-			}
-			camera.setFaceDetectionListener(new MyFaceDetectionListener());
-		}
-		
-		// get video stabilization supported
-		this.supports_video_stabilization = parameters.isVideoStabilizationSupported();
-		if( this.supports_video_stabilization ) {
-			boolean using_video_stabilization = sharedPreferences.getBoolean("preference_video_stabilization", false);
-			if( MyDebug.LOG )
-				Log.d(TAG, "using_video_stabilization?: " + using_video_stabilization);
-            parameters.setVideoStabilization(using_video_stabilization);
-		}
-		if( MyDebug.LOG )
-			Log.d(TAG, "supports_video_stabilization?: " + supports_video_stabilization);
-
-		// get available color effects
-		color_effects = parameters.getSupportedColorEffects();
-		String color_effect = setupValuesPref(color_effects, getColorEffectPreferenceKey(), Camera.Parameters.EFFECT_NONE);
-		if( color_effect != null ) {
-        	parameters.setColorEffect(color_effect);
-		}
-
-		// get available white balances
-		white_balances = parameters.getSupportedWhiteBalance();
-		String white_balance = setupValuesPref(white_balances, getWhiteBalancePreferenceKey(), Camera.Parameters.WHITE_BALANCE_AUTO);
-		if( white_balance != null ) {
-        	parameters.setWhiteBalance(white_balance);
-		}
-		
-		// get available isos - no standard value for this, see http://stackoverflow.com/questions/2978095/android-camera-api-iso-setting
 		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up scene mode");
+		    Camera.Parameters parameters = camera.getParameters();
+			// get available scene modes
+			// important, from docs:
+			// "Changing scene mode may override other parameters (such as flash mode, focus mode, white balance).
+			// For example, suppose originally flash mode is on and supported flash modes are on/off. In night
+			// scene mode, both flash mode and supported flash mode may be changed to off. After setting scene
+			// mode, applications should call getParameters to know if some parameters are changed."
+			scene_modes = parameters.getSupportedSceneModes();
+			String scene_mode = setupValuesPref(scene_modes, getSceneModePreferenceKey(), Camera.Parameters.SCENE_MODE_AUTO);
+			if( scene_mode != null && !parameters.getSceneMode().equals(scene_mode) ) {
+	        	parameters.setSceneMode(scene_mode);
+	        	setCameraParameters(parameters);
+			}
+		}
+		
+		List<String> supported_flash_modes = null;
+		List<String> supported_focus_modes = null;
+		{
+			// grab all read-only info from parameters
+			if( MyDebug.LOG )
+				Log.d(TAG, "grab info from parameters");
+		    Camera.Parameters parameters = camera.getParameters();
+			this.has_zoom = parameters.isZoomSupported();
+			if( this.has_zoom ) {
+				this.max_zoom_factor = parameters.getMaxZoom();
+				try {
+					this.zoom_ratios = parameters.getZoomRatios();
+				}
+				catch(NumberFormatException e) {
+	        		// crash java.lang.NumberFormatException: Invalid int: " 500" reported in v1.4 on device "es209ra", Android 4.1, 3 Jan 2014
+					// this is from java.lang.Integer.invalidInt(Integer.java:138) - unclear if this is a bug in Open Camera, all we can do for now is catch it
+		    		if( MyDebug.LOG )
+		    			Log.e(TAG, "NumberFormatException in getZoomRatios()");
+					e.printStackTrace();
+					this.has_zoom = false;
+					this.zoom_ratios = null;
+				}
+			}
+
+			this.supports_face_detection = parameters.getMaxNumDetectedFaces() > 0;
+
+			// get available sizes
+	        sizes = parameters.getSupportedPictureSizes();
+
+	        if( MyDebug.LOG )
+				Log.d(TAG, "get preview fps range");
+	        has_current_fps_range = false;
+	        try {
+				parameters.getPreviewFpsRange(current_fps_range);
+		        has_current_fps_range = true;
+		    	if( MyDebug.LOG ) {
+					Log.d(TAG, "    current fps range: " + current_fps_range[Camera.Parameters.PREVIEW_FPS_MIN_INDEX] + " to " + current_fps_range[Camera.Parameters.PREVIEW_FPS_MAX_INDEX]);
+		    	}
+	        }
+	        catch(NumberFormatException e) {
+	        	// needed to trap NumberFormatException reported on "mb526" running SlimKat 4.6, based on Android 4.4.2
+		    	if( MyDebug.LOG )
+					Log.d(TAG, "parameters.getPreviewFpsRange failed!");
+		    	e.printStackTrace();
+	        }
+
+	    	supported_flash_modes = parameters.getSupportedFlashModes(); // Android format
+
+	    	supported_focus_modes = parameters.getSupportedFocusModes(); // Android format
+
+	    	this.is_exposure_locked_supported = parameters.isAutoExposureLockSupported();
+
+	    	this.supports_video_stabilization = parameters.isVideoStabilizationSupported();
+		}
+		
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up zoom");
+			if( MyDebug.LOG )
+				Log.d(TAG, "has_zoom? " + has_zoom);
+		    ZoomControls zoomControls = (ZoomControls) activity.findViewById(R.id.zoom);
+		    SeekBar zoomSeekBar = (SeekBar) activity.findViewById(R.id.zoom_seekbar);
+
+			if( this.has_zoom ) {
+				if( sharedPreferences.getBoolean("preference_show_zoom_controls", false) ) {
+				    zoomControls.setIsZoomInEnabled(true);
+			        zoomControls.setIsZoomOutEnabled(true);
+			        zoomControls.setZoomSpeed(20);
+
+			        zoomControls.setOnZoomInClickListener(new OnClickListener(){
+			            public void onClick(View v){
+			            	zoomIn();
+			            }
+			        });
+				    zoomControls.setOnZoomOutClickListener(new OnClickListener(){
+				    	public void onClick(View v){
+				    		zoomOut();
+				        }
+				    });
+					zoomControls.setVisibility(View.VISIBLE);
+				}
+				else {
+					zoomControls.setVisibility(View.INVISIBLE); // must be INVISIBLE not GONE, so we can still position the zoomSeekBar relative to it
+				}
+				
+				zoomSeekBar.setMax(max_zoom_factor);
+				zoomSeekBar.setProgress(max_zoom_factor-zoom_factor);
+				zoomSeekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+					@Override
+					public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+						zoomTo(max_zoom_factor-progress, false);
+					}
+
+					@Override
+					public void onStartTrackingTouch(SeekBar seekBar) {
+					}
+
+					@Override
+					public void onStopTrackingTouch(SeekBar seekBar) {
+					}
+				});
+
+				if( sharedPreferences.getBoolean("preference_show_zoom_slider_controls", true) ) {
+					zoomSeekBar.setVisibility(View.VISIBLE);
+				}
+				else {
+					zoomSeekBar.setVisibility(View.INVISIBLE);
+				}
+			}
+			else {
+				zoomControls.setVisibility(View.GONE);
+				zoomSeekBar.setVisibility(View.GONE);
+			}
+		}
+
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up face detection");
+			// get face detection supported
+			this.faces_detected = null;
+			if( this.supports_face_detection ) {
+				this.using_face_detection = sharedPreferences.getBoolean("preference_face_detection", false);
+			}
+			else {
+				this.using_face_detection = false;
+			}
+			if( MyDebug.LOG ) {
+				Log.d(TAG, "supports_face_detection?: " + supports_face_detection);
+				Log.d(TAG, "using_face_detection?: " + using_face_detection);
+			}
+			if( this.using_face_detection ) {
+				class MyFaceDetectionListener implements Camera.FaceDetectionListener {
+				    @Override
+				    public void onFaceDetection(Face[] faces, Camera camera) {
+				    	faces_detected = new Face[faces.length];
+				    	System.arraycopy(faces, 0, faces_detected, 0, faces.length);				    	
+				    }
+				}
+				camera.setFaceDetectionListener(new MyFaceDetectionListener());
+			}
+		}
+		
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up video stabilization");
+			if( this.supports_video_stabilization ) {
+				boolean using_video_stabilization = sharedPreferences.getBoolean("preference_video_stabilization", false);
+				if( MyDebug.LOG )
+					Log.d(TAG, "using_video_stabilization?: " + using_video_stabilization);
+			    Camera.Parameters parameters = camera.getParameters();
+	            parameters.setVideoStabilization(using_video_stabilization);
+	        	setCameraParameters(parameters);
+			}
+			if( MyDebug.LOG )
+				Log.d(TAG, "supports_video_stabilization?: " + supports_video_stabilization);
+		}
+
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up color effect");
+		    Camera.Parameters parameters = camera.getParameters();
+			// get available color effects
+			color_effects = parameters.getSupportedColorEffects();
+			String color_effect = setupValuesPref(color_effects, getColorEffectPreferenceKey(), Camera.Parameters.EFFECT_NONE);
+			if( color_effect != null ) {
+	        	parameters.setColorEffect(color_effect);
+	        	setCameraParameters(parameters);
+			}
+		}
+
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up white balance");
+		    Camera.Parameters parameters = camera.getParameters();
+			// get available white balances
+			white_balances = parameters.getSupportedWhiteBalance();
+			String white_balance = setupValuesPref(white_balances, getWhiteBalancePreferenceKey(), Camera.Parameters.WHITE_BALANCE_AUTO);
+			if( white_balance != null ) {
+	        	parameters.setWhiteBalance(white_balance);
+	        	setCameraParameters(parameters);
+			}
+		}
+		
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up iso");
+		    Camera.Parameters parameters = camera.getParameters();
+			// get available isos - no standard value for this, see http://stackoverflow.com/questions/2978095/android-camera-api-iso-setting
 			String iso_values = parameters.get("iso-values");
 			if( iso_values == null ) {
 				iso_values = parameters.get("iso-mode-values"); // Galaxy Nexus
@@ -1063,155 +1166,175 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 					}
 				}
 			}
-		}
-		iso_key = "iso";
-		if( parameters.get(iso_key) == null ) {
-			iso_key = "iso-speed"; // Micromax A101
+
+			iso_key = "iso";
 			if( parameters.get(iso_key) == null ) {
-				iso_key = "nv-picture-iso"; // LG dual P990
-				if( parameters.get(iso_key) == null )
-					iso_key = null; // not supported
+				iso_key = "iso-speed"; // Micromax A101
+				if( parameters.get(iso_key) == null ) {
+					iso_key = "nv-picture-iso"; // LG dual P990
+					if( parameters.get(iso_key) == null )
+						iso_key = null; // not supported
+				}
 			}
-		}
-		if( iso_key != null ) {
-			if( isos == null ) {
-				// set a default for some devices which have an iso_key, but don't give a list of supported ISOs
-				isos = new ArrayList<String>();
-				isos.add("auto");
-				isos.add("100");
-				isos.add("200");
-				isos.add("400");
-				isos.add("800");
-				isos.add("1600");
-			}
-			String iso = setupValuesPref(isos, getISOPreferenceKey(), "auto");
-			if( iso != null ) {
-				if( MyDebug.LOG )
-					Log.d(TAG, "set: " + iso_key + " to: " + iso);
-	        	parameters.set(iso_key, iso);
+			/*isos = new ArrayList<String>();
+			isos.add("auto");
+			isos.add("ISO_HJR");
+			isos.add("100");
+			isos.add("200");
+			isos.add("400");
+			isos.add("800");
+			isos.add("1600");*/
+			if( iso_key != null ){
+				if( isos == null ) {
+					// set a default for some devices which have an iso_key, but don't give a list of supported ISOs
+					isos = new ArrayList<String>();
+					isos.add("auto");
+					isos.add("100");
+					isos.add("200");
+					isos.add("400");
+					isos.add("800");
+					isos.add("1600");
+				}
+				String iso = setupValuesPref(isos, getISOPreferenceKey(), "auto");
+				if( iso != null ) {
+					if( MyDebug.LOG )
+						Log.d(TAG, "set: " + iso_key + " to: " + iso);
+		        	parameters.set(iso_key, iso);
+		        	setCameraParameters(parameters);
+				}
 			}
 		}
 
-		// get min/max exposure
-		exposures = null;
-		min_exposure = parameters.getMinExposureCompensation();
-		max_exposure = parameters.getMaxExposureCompensation();
-		if( min_exposure != 0 || max_exposure != 0 ) {
-			exposures = new Vector<String>();
-			for(int i=min_exposure;i<=max_exposure;i++) {
-				exposures.add("" + i);
-			}
-			String exposure_s = setupValuesPref(exposures, getExposurePreferenceKey(), "0");
-			if( exposure_s != null ) {
-				try {
-					int exposure = Integer.parseInt(exposure_s);
-					if( MyDebug.LOG )
-						Log.d(TAG, "exposure: " + exposure);
-					parameters.setExposureCompensation(exposure);
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up exposure compensation");
+		    Camera.Parameters parameters = camera.getParameters();
+			// get min/max exposure
+			exposures = null;
+			min_exposure = parameters.getMinExposureCompensation();
+			max_exposure = parameters.getMaxExposureCompensation();
+			if( min_exposure != 0 || max_exposure != 0 ) {
+				exposures = new Vector<String>();
+				for(int i=min_exposure;i<=max_exposure;i++) {
+					exposures.add("" + i);
 				}
-				catch(NumberFormatException exception) {
-					if( MyDebug.LOG )
-						Log.d(TAG, "exposure invalid format, can't parse to int");
-				}
-			}
-		}
-		View exposureButton = (View) activity.findViewById(R.id.exposure);
-	    exposureButton.setVisibility(exposures != null ? View.VISIBLE : View.GONE);
-
-		// get available sizes
-        sizes = parameters.getSupportedPictureSizes();
-		if( MyDebug.LOG ) {
-			for(int i=0;i<sizes.size();i++) {
-	        	Camera.Size size = sizes.get(i);
-	        	Log.d(TAG, "supported picture size: " + size.width + " , " + size.height);
-			}
-		}
-		current_size_index = -1;
-		String resolution_value = sharedPreferences.getString(getResolutionPreferenceKey(cameraId), "");
-		if( MyDebug.LOG )
-			Log.d(TAG, "resolution_value: " + resolution_value);
-		if( resolution_value.length() > 0 ) {
-			// parse the saved size, and make sure it is still valid
-			int index = resolution_value.indexOf(' ');
-			if( index == -1 ) {
-				if( MyDebug.LOG )
-					Log.d(TAG, "resolution_value invalid format, can't find space");
-			}
-			else {
-				String resolution_w_s = resolution_value.substring(0, index);
-				String resolution_h_s = resolution_value.substring(index+1);
-				if( MyDebug.LOG ) {
-					Log.d(TAG, "resolution_w_s: " + resolution_w_s);
-					Log.d(TAG, "resolution_h_s: " + resolution_h_s);
-				}
-				try {
-					int resolution_w = Integer.parseInt(resolution_w_s);
-					if( MyDebug.LOG )
-						Log.d(TAG, "resolution_w: " + resolution_w);
-					int resolution_h = Integer.parseInt(resolution_h_s);
-					if( MyDebug.LOG )
-						Log.d(TAG, "resolution_h: " + resolution_h);
-					// now find size in valid list
-					for(int i=0;i<sizes.size() && current_size_index==-1;i++) {
-			        	Camera.Size size = sizes.get(i);
-			        	if( size.width == resolution_w && size.height == resolution_h ) {
-			        		current_size_index = i;
-							if( MyDebug.LOG )
-								Log.d(TAG, "set current_size_index to: " + current_size_index);
-			        	}
-					}
-					if( current_size_index == -1 ) {
+				String exposure_s = setupValuesPref(exposures, getExposurePreferenceKey(), "0");
+				if( exposure_s != null ) {
+					try {
+						int exposure = Integer.parseInt(exposure_s);
 						if( MyDebug.LOG )
-							Log.e(TAG, "failed to find valid size");
+							Log.d(TAG, "exposure: " + exposure);
+						parameters.setExposureCompensation(exposure);
+			        	setCameraParameters(parameters);
+					}
+					catch(NumberFormatException exception) {
+						if( MyDebug.LOG )
+							Log.d(TAG, "exposure invalid format, can't parse to int");
 					}
 				}
-				catch(NumberFormatException exception) {
-					if( MyDebug.LOG )
-						Log.d(TAG, "resolution_value invalid format, can't parse w or h to int");
+			}
+			View exposureButton = (View) activity.findViewById(R.id.exposure);
+		    exposureButton.setVisibility(exposures != null ? View.VISIBLE : View.GONE);
+		}
+
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up picture sizes");
+			if( MyDebug.LOG ) {
+				for(int i=0;i<sizes.size();i++) {
+		        	Camera.Size size = sizes.get(i);
+		        	Log.d(TAG, "supported picture size: " + size.width + " , " + size.height);
 				}
 			}
-		}
-
-		if( current_size_index == -1 ) {
-			// set to largest
-			Camera.Size current_size = null;
-			for(int i=0;i<sizes.size();i++) {
-	        	Camera.Size size = sizes.get(i);
-	        	if( current_size == null || size.width*size.height > current_size.width*current_size.height ) {
-	        		current_size_index = i;
-	        		current_size = size;
-	        	}
-	        }
-		}
-		if( current_size_index != -1 ) {
-			Camera.Size current_size = sizes.get(current_size_index);
-    		if( MyDebug.LOG )
-    			Log.d(TAG, "Current size index " + current_size_index + ": " + current_size.width + ", " + current_size.height);
-
-    		// now save, so it's available for PreferenceActivity
-			resolution_value = current_size.width + " " + current_size.height;
-			if( MyDebug.LOG ) {
-				Log.d(TAG, "save new resolution_value: " + resolution_value);
+			current_size_index = -1;
+			String resolution_value = sharedPreferences.getString(getResolutionPreferenceKey(cameraId), "");
+			if( MyDebug.LOG )
+				Log.d(TAG, "resolution_value: " + resolution_value);
+			if( resolution_value.length() > 0 ) {
+				// parse the saved size, and make sure it is still valid
+				int index = resolution_value.indexOf(' ');
+				if( index == -1 ) {
+					if( MyDebug.LOG )
+						Log.d(TAG, "resolution_value invalid format, can't find space");
+				}
+				else {
+					String resolution_w_s = resolution_value.substring(0, index);
+					String resolution_h_s = resolution_value.substring(index+1);
+					if( MyDebug.LOG ) {
+						Log.d(TAG, "resolution_w_s: " + resolution_w_s);
+						Log.d(TAG, "resolution_h_s: " + resolution_h_s);
+					}
+					try {
+						int resolution_w = Integer.parseInt(resolution_w_s);
+						if( MyDebug.LOG )
+							Log.d(TAG, "resolution_w: " + resolution_w);
+						int resolution_h = Integer.parseInt(resolution_h_s);
+						if( MyDebug.LOG )
+							Log.d(TAG, "resolution_h: " + resolution_h);
+						// now find size in valid list
+						for(int i=0;i<sizes.size() && current_size_index==-1;i++) {
+				        	Camera.Size size = sizes.get(i);
+				        	if( size.width == resolution_w && size.height == resolution_h ) {
+				        		current_size_index = i;
+								if( MyDebug.LOG )
+									Log.d(TAG, "set current_size_index to: " + current_size_index);
+				        	}
+						}
+						if( current_size_index == -1 ) {
+							if( MyDebug.LOG )
+								Log.e(TAG, "failed to find valid size");
+						}
+					}
+					catch(NumberFormatException exception) {
+						if( MyDebug.LOG )
+							Log.d(TAG, "resolution_value invalid format, can't parse w or h to int");
+					}
+				}
 			}
-			SharedPreferences.Editor editor = sharedPreferences.edit();
-			editor.putString(getResolutionPreferenceKey(cameraId), resolution_value);
-			editor.apply();
+
+			if( current_size_index == -1 ) {
+				// set to largest
+				Camera.Size current_size = null;
+				for(int i=0;i<sizes.size();i++) {
+		        	Camera.Size size = sizes.get(i);
+		        	if( current_size == null || size.width*size.height > current_size.width*current_size.height ) {
+		        		current_size_index = i;
+		        		current_size = size;
+		        	}
+		        }
+			}
+			if( current_size_index != -1 ) {
+				Camera.Size current_size = sizes.get(current_size_index);
+	    		if( MyDebug.LOG )
+	    			Log.d(TAG, "Current size index " + current_size_index + ": " + current_size.width + ", " + current_size.height);
+
+	    		// now save, so it's available for PreferenceActivity
+				resolution_value = current_size.width + " " + current_size.height;
+				if( MyDebug.LOG ) {
+					Log.d(TAG, "save new resolution_value: " + resolution_value);
+				}
+				SharedPreferences.Editor editor = sharedPreferences.edit();
+				editor.putString(getResolutionPreferenceKey(cameraId), resolution_value);
+				editor.apply();
+			}
+			// size set later in setPreviewSize()
 		}
-		// size set later in setPreviewSize()
 
-		/*if( MyDebug.LOG )
-			Log.d(TAG, "Current image quality: " + parameters.getJpegQuality());*/
-		int image_quality = getImageQuality();
-		parameters.setJpegQuality(image_quality);
-		if( MyDebug.LOG )
-			Log.d(TAG, "image quality: " + image_quality);
-
-		if( MyDebug.LOG ) {
-			//Log.d(TAG, "time after reading camera parameters: " + (System.currentTimeMillis() - debug_time));
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up jpeg quality");
+		    Camera.Parameters parameters = camera.getParameters();
+			/*if( MyDebug.LOG )
+				Log.d(TAG, "Current image quality: " + parameters.getJpegQuality());*/
+			int image_quality = getImageQuality();
+			parameters.setJpegQuality(image_quality);
+        	setCameraParameters(parameters);
+			if( MyDebug.LOG )
+				Log.d(TAG, "image quality: " + image_quality);
 		}
 
 		// get available sizes
-		initialiseVideoSizes(parameters);
+		initialiseVideoSizes();
 		initialiseVideoQuality();
 
 		current_video_quality = -1;
@@ -1246,123 +1369,118 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			editor.apply();
 		}
 
-		parameters.getPreviewFpsRange(current_fps_range);
-    	if( MyDebug.LOG ) {
-			Log.d(TAG, "    current fps range: " + current_fps_range[Camera.Parameters.PREVIEW_FPS_MIN_INDEX] + " to " + current_fps_range[Camera.Parameters.PREVIEW_FPS_MAX_INDEX]);
-    	}
-
-		// update parameters
-		camera.setParameters(parameters);
-
-		// we do the following after setting parameters, as these are done by calling separate functions, that themselves set the parameters directly
-		List<String> supported_flash_modes = parameters.getSupportedFlashModes(); // Android format
-	    View flashButton = (View) activity.findViewById(R.id.flash);
-		current_flash_index = -1;
-		if( supported_flash_modes != null && supported_flash_modes.size() > 1 ) {
+		{
 			if( MyDebug.LOG )
-				Log.d(TAG, "flash modes: " + supported_flash_modes);
-			supported_flash_values = convertFlashModesToValues(supported_flash_modes); // convert to our format (also resorts)
-
-			String flash_value = sharedPreferences.getString(getFlashPreferenceKey(cameraId), "");
-			if( flash_value.length() > 0 ) {
+				Log.d(TAG, "set up flash");
+			current_flash_index = -1;
+			if( supported_flash_modes != null && supported_flash_modes.size() > 1 ) {
 				if( MyDebug.LOG )
-					Log.d(TAG, "found existing flash_value: " + flash_value);
-				if( !updateFlash(flash_value) ) {
+					Log.d(TAG, "flash modes: " + supported_flash_modes);
+				supported_flash_values = convertFlashModesToValues(supported_flash_modes); // convert to our format (also resorts)
+
+				String flash_value = sharedPreferences.getString(getFlashPreferenceKey(cameraId), "");
+				if( flash_value.length() > 0 ) {
 					if( MyDebug.LOG )
-						Log.d(TAG, "flash value no longer supported!");
-					updateFlash(0);
+						Log.d(TAG, "found existing flash_value: " + flash_value);
+					if( !updateFlash(flash_value, false) ) { // don't need to save, as this is the value that's already saved
+						if( MyDebug.LOG )
+							Log.d(TAG, "flash value no longer supported!");
+						updateFlash(0, true);
+					}
+				}
+				else {
+					if( MyDebug.LOG )
+						Log.d(TAG, "found no existing flash_value");
+					updateFlash("flash_auto", true);
 				}
 			}
 			else {
 				if( MyDebug.LOG )
-					Log.d(TAG, "found no existing flash_value");
-				updateFlash(0);
+					Log.d(TAG, "flash not supported");
+				supported_flash_values = null;
 			}
 		}
-		else {
-			if( MyDebug.LOG )
-				Log.d(TAG, "flash not supported");
-			supported_flash_values = null;
-		}
-		flashButton.setVisibility(supported_flash_values != null ? View.VISIBLE : View.GONE);
 
-		List<String> supported_focus_modes = parameters.getSupportedFocusModes(); // Android format
-	    View focusModeButton = (View) activity.findViewById(R.id.focus_mode);
-		current_focus_index = -1;
-		if( supported_focus_modes != null && supported_focus_modes.size() > 1 ) {
+		{
 			if( MyDebug.LOG )
-				Log.d(TAG, "focus modes: " + supported_focus_modes);
-			supported_focus_values = convertFocusModesToValues(supported_focus_modes); // convert to our format (also resorts)
-
-			String focus_value = sharedPreferences.getString(getFocusPreferenceKey(cameraId), "");
-			if( focus_value.length() > 0 ) {
+				Log.d(TAG, "set up focus");
+			current_focus_index = -1;
+			if( supported_focus_modes != null && supported_focus_modes.size() > 1 ) {
 				if( MyDebug.LOG )
-					Log.d(TAG, "found existing focus_value: " + focus_value);
-				if( !updateFocus(focus_value, false, false, true) ) { // don't need to save, as this is the value that's already saved
+					Log.d(TAG, "focus modes: " + supported_focus_modes);
+				supported_focus_values = convertFocusModesToValues(supported_focus_modes); // convert to our format (also resorts)
+	
+				String focus_value = sharedPreferences.getString(getFocusPreferenceKey(cameraId), "");
+				if( focus_value.length() > 0 ) {
 					if( MyDebug.LOG )
-						Log.d(TAG, "focus value no longer supported!");
-					updateFocus(0, false, true, true);
+						Log.d(TAG, "found existing focus_value: " + focus_value);
+					if( !updateFocus(focus_value, false, false, true) ) { // don't need to save, as this is the value that's already saved
+						if( MyDebug.LOG )
+							Log.d(TAG, "focus value no longer supported!");
+						updateFocus(0, false, true, true);
+					}
+				}
+				else {
+					if( MyDebug.LOG )
+						Log.d(TAG, "found no existing focus_value");
+					updateFocus("focus_mode_auto", false, true, true);
 				}
 			}
 			else {
 				if( MyDebug.LOG )
-					Log.d(TAG, "found no existing focus_value");
-				updateFocus(0, false, true, true);
+					Log.d(TAG, "focus not supported");
+				supported_focus_values = null;
 			}
+			/*supported_focus_values = new Vector<String>();
+			supported_focus_values.add("focus_mode_auto");
+			supported_focus_values.add("focus_mode_infinity");
+			supported_focus_values.add("focus_mode_macro");
+			supported_focus_values.add("focus_mode_manual");
+			supported_focus_values.add("focus_mode_fixed");
+			supported_focus_values.add("focus_mode_edof");
+			supported_focus_values.add("focus_mode_continuous_video");*/
+		    /*View focusModeButton = (View) activity.findViewById(R.id.focus_mode);
+			focusModeButton.setVisibility(supported_focus_values != null ? View.VISIBLE : View.GONE);*/
 		}
-		else {
-			if( MyDebug.LOG )
-				Log.d(TAG, "focus not supported");
-			supported_focus_values = null;
-		}
-		focusModeButton.setVisibility(supported_focus_values != null ? View.VISIBLE : View.GONE);
 
-	    this.is_exposure_locked_supported = parameters.isAutoExposureLockSupported();
-	    ImageButton exposureLockButton = (ImageButton) activity.findViewById(R.id.exposure_lock);
-	    exposureLockButton.setVisibility(is_exposure_locked_supported ? View.VISIBLE : View.GONE);
-    	is_exposure_locked = false;
-	    if( is_exposure_locked_supported ) {
-	    	// exposure lock should always default to false, as doesn't make sense to save it - we can't really preserve a "lock" after the camera is reopened
-	    	// also note that it isn't safe to lock the exposure before starting the preview
-			exposureLockButton.setImageResource(is_exposure_locked ? R.drawable.exposure_locked : R.drawable.exposure_unlocked);
+		{
+			if( MyDebug.LOG )
+				Log.d(TAG, "set up exposure lock");
+		    ImageButton exposureLockButton = (ImageButton) activity.findViewById(R.id.exposure_lock);
+		    exposureLockButton.setVisibility(is_exposure_locked_supported ? View.VISIBLE : View.GONE);
+	    	is_exposure_locked = false;
+		    if( is_exposure_locked_supported ) {
+		    	// exposure lock should always default to false, as doesn't make sense to save it - we can't really preserve a "lock" after the camera is reopened
+		    	// also note that it isn't safe to lock the exposure before starting the preview
+				exposureLockButton.setImageResource(is_exposure_locked ? R.drawable.exposure_locked : R.drawable.exposure_unlocked);
+		    }
+		}
+
+		if( MyDebug.LOG ) {
+			Log.d(TAG, "time after setting up camera parameters: " + (System.currentTimeMillis() - debug_time));
+		}
+	}
+
+	private void setCameraParameters(Camera.Parameters parameters) {
+		if( MyDebug.LOG )
+			Log.d(TAG, "setCameraParameters");
+		if( camera == null ) {
+			if( MyDebug.LOG )
+				Log.d(TAG, "camera not opened!");
+            return;
+		}
+	    try {
+	    	camera.setParameters(parameters);
+    		if( MyDebug.LOG )
+    			Log.d(TAG, "done");
 	    }
-
-		// now switch to video if saved
-		boolean saved_is_video = sharedPreferences.getBoolean(getIsVideoPreferenceKey(), false);
-		if( MyDebug.LOG ) {
-			Log.d(TAG, "saved_is_video: " + saved_is_video);
-		}
-		if( saved_is_video != this.is_video ) {
-			this.switchVideo(false, false);
-		}
-		else {
-			showPhotoVideoToast();
-		}
-
-		// Must set preview size before starting camera preview
-		// and must do it after setting photo vs video mode
-		setPreviewSize(); // need to call this when we switch cameras, not just when we run for the first time
-		// Must call startCameraPreview after checking if face detection is present - probably best to call it after setting all parameters that we want
-		startCameraPreview();
-		if( MyDebug.LOG ) {
-			//Log.d(TAG, "time after starting camera preview: " + (System.currentTimeMillis() - debug_time));
-		}
-
-		// must be done after setting parameters, as this function may set parameters
-		// also needs to be done after starting preview for some devices (e.g., Nexus 7)
-		if( this.has_zoom && zoom_factor != 0 ) {
-			int new_zoom_factor = zoom_factor;
-			zoom_factor = 0; // force zoomTo to actually update the zoom!
-			zoomTo(new_zoom_factor, true);
-		}
-
-    	final Handler handler = new Handler();
-		handler.postDelayed(new Runnable() {
-			@Override
-			public void run() {
-				tryAutoFocus(true, false); // so we get the autofocus when starting up - we do this on a delay, as calling it immediately means the autofocus doesn't seem to work properly sometimes (at least on Galaxy Nexus)
-			}
-		}, 500);
+	    catch(RuntimeException e) {
+	    	// just in case something has gone wrong
+    		if( MyDebug.LOG )
+    			Log.d(TAG, "failed to set parameters");
+    		e.printStackTrace();
+    		count_camera_parameters_exception++;
+	    }
 	}
 
 	private String setupValuesPref(List<String> values, String key, String default_value) {
@@ -1437,6 +1555,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				Log.d(TAG, "setPreviewSize() shouldn't be called when preview is running");
 			throw new RuntimeException();
 		}
+		this.cancelAutoFocus();
 		// first set picture size (for photo mode, must be done now so we can set the picture size from this; for video, doesn't really matter when we set it)
     	Camera.Parameters parameters = camera.getParameters();
     	if( this.is_video ) {
@@ -1462,7 +1581,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     		}
     	}
     	// need to set parameteres, so that picture size is set
-        camera.setParameters(parameters);
+    	setCameraParameters(parameters);
     	parameters = camera.getParameters();
 		// set optimal preview size
 		if( MyDebug.LOG )
@@ -1483,7 +1602,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     			Log.d(TAG, "new preview size: " + parameters.getPreviewSize().width + ", " + parameters.getPreviewSize().height);
     		this.setAspectRatio( ((double)parameters.getPreviewSize().width) / (double)parameters.getPreviewSize().height );
 
-            camera.setParameters(parameters);
+        	setCameraParameters(parameters);
         }
 	}
 
@@ -1503,7 +1622,13 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		this.sortVideoSizes();
 	}
 	
-	private void initialiseVideoSizes(Camera.Parameters parameters) {
+	private void initialiseVideoSizes() {
+		if( camera == null ) {
+			if( MyDebug.LOG )
+				Log.d(TAG, "camera not opened!");
+			return;
+		}
+	    Camera.Parameters parameters = camera.getParameters();
     	video_sizes = parameters.getSupportedVideoSizes(); 
     	if( video_sizes == null ) {
     		// if null, we should use the preview sizes - see http://stackoverflow.com/questions/14263521/android-getsupportedvideosizes-allways-returns-null
@@ -1846,6 +1971,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
         	// but if the preview's aspect ratio differs from the actual photo/video size, the preview will show a cropped version of what is actually taken
             targetRatio = ((double)display_size.x) / (double)display_size.y;
 		}
+		this.preview_targetRatio = targetRatio;
 		if( MyDebug.LOG )
 			Log.d(TAG, "targetRatio: " + targetRatio);
 		return targetRatio;
@@ -2022,6 +2148,14 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		if( MyDebug.LOG )
 			Log.d(TAG, "    degrees = " + degrees);
 
+		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
+		String rotate_preview = sharedPreferences.getString("preference_rotate_preview", "0");
+		if( MyDebug.LOG )
+			Log.d(TAG, "    rotate_preview = " + rotate_preview);
+		if( rotate_preview.equals("180") ) {
+			degrees = (degrees + 180) % 360;
+		}
+		
 	    int result = 0;
 	    if( info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT ) {
 	        result = (info.orientation + degrees) % 360;
@@ -2157,14 +2291,15 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		MainActivity main_activity = (MainActivity)this.getContext();
 		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
 		final float scale = getResources().getDisplayMetrics().density;
-		if( camera != null && sharedPreferences.getString("preference_grid", "preference_grid_none").equals("preference_grid_3x3") ) {
+		String preference_grid = sharedPreferences.getString("preference_grid", "preference_grid_none");
+		if( camera != null && preference_grid.equals("preference_grid_3x3") ) {
 			p.setColor(Color.WHITE);
 			canvas.drawLine(canvas.getWidth()/3.0f, 0.0f, canvas.getWidth()/3.0f, canvas.getHeight()-1.0f, p);
 			canvas.drawLine(2.0f*canvas.getWidth()/3.0f, 0.0f, 2.0f*canvas.getWidth()/3.0f, canvas.getHeight()-1.0f, p);
 			canvas.drawLine(0.0f, canvas.getHeight()/3.0f, canvas.getWidth()-1.0f, canvas.getHeight()/3.0f, p);
 			canvas.drawLine(0.0f, 2.0f*canvas.getHeight()/3.0f, canvas.getWidth()-1.0f, 2.0f*canvas.getHeight()/3.0f, p);
 		}
-		if( camera != null && sharedPreferences.getString("preference_grid", "preference_grid_none").equals("preference_grid_4x2") ) {
+		if( camera != null && preference_grid.equals("preference_grid_4x2") ) {
 			p.setColor(Color.GRAY);
 			canvas.drawLine(canvas.getWidth()/4.0f, 0.0f, canvas.getWidth()/4.0f, canvas.getHeight()-1.0f, p);
 			canvas.drawLine(canvas.getWidth()/2.0f, 0.0f, canvas.getWidth()/2.0f, canvas.getHeight()-1.0f, p);
@@ -2174,6 +2309,54 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			int crosshairs_radius = (int) (20 * scale + 0.5f); // convert dps to pixels
 			canvas.drawLine(canvas.getWidth()/2.0f, canvas.getHeight()/2.0f - crosshairs_radius, canvas.getWidth()/2.0f, canvas.getHeight()/2.0f + crosshairs_radius, p);
 			canvas.drawLine(canvas.getWidth()/2.0f - crosshairs_radius, canvas.getHeight()/2.0f, canvas.getWidth()/2.0f + crosshairs_radius, canvas.getHeight()/2.0f, p);
+		}
+		if( this.is_video || sharedPreferences.getString("preference_preview_size", "preference_preview_size_wysiwyg").equals("preference_preview_size_wysiwyg") ) {
+			String preference_crop_guide = sharedPreferences.getString("preference_crop_guide", "crop_guide_none");
+			if( camera != null && preview_targetRatio > 0.0 && !preference_crop_guide.equals("crop_guide_none") ) {
+				p.setStyle(Paint.Style.STROKE);
+				p.setColor(Color.rgb(255, 235, 59)); // Yellow 500
+				double crop_ratio = -1.0;
+				if( preference_crop_guide.equals("crop_guide_1.33") ) {
+					crop_ratio = 1.33333333;
+				}
+				else if( preference_crop_guide.equals("crop_guide_1.78") ) {
+					crop_ratio = 1.77777778;
+				}
+				else if( preference_crop_guide.equals("crop_guide_1.85") ) {
+					crop_ratio = 1.85;
+				}
+				else if( preference_crop_guide.equals("crop_guide_2.33") ) {
+					crop_ratio = 2.33333333;
+				}
+				else if( preference_crop_guide.equals("crop_guide_2.35") ) {
+					crop_ratio = 2.35006120; // actually 1920:817
+				}
+				else if( preference_crop_guide.equals("crop_guide_2.4") ) {
+					crop_ratio = 2.4;
+				}
+				if( crop_ratio > 0.0 && Math.abs(preview_targetRatio - crop_ratio) > 1.0e-5 ) {
+		    		/*if( MyDebug.LOG ) {
+		    			Log.d(TAG, "crop_ratio: " + crop_ratio);
+		    			Log.d(TAG, "preview_targetRatio: " + preview_targetRatio);
+		    			Log.d(TAG, "canvas width: " + canvas.getWidth());
+		    			Log.d(TAG, "canvas height: " + canvas.getHeight());
+		    		}*/
+					int left = 1, top = 1, right = canvas.getWidth()-1, bottom = canvas.getHeight()-1;
+					if( crop_ratio > preview_targetRatio ) {
+						// crop ratio is wider, so we have to crop top/bottom
+						double new_hheight = ((double)canvas.getWidth()) / (2.0f*crop_ratio);
+						top = (int)(canvas.getHeight()/2 - new_hheight);
+						bottom = (int)(canvas.getHeight()/2 + new_hheight);
+					}
+					else {
+						// crop ratio is taller, so we have to crop left/right
+						double new_hwidth = (((double)canvas.getHeight()) * crop_ratio) / 2.0f;
+						left = (int)(canvas.getWidth()/2 - new_hwidth);
+						right = (int)(canvas.getWidth()/2 + new_hwidth);
+					}
+					canvas.drawRect(left, top, right, bottom, p);
+				}
+			}
 		}
 
 		// note, no need to check preferences here, as we do that when setting thumbnail_anim
@@ -2282,7 +2465,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 					p.setTextAlign(Paint.Align.CENTER);
 				}
 				if( Math.abs(this.level_angle) <= close_angle ) {
-					color = Color.rgb(50, 255, 50);
+					color = Color.rgb(20, 231, 21); // Green A400
 				}
 				String string = getResources().getString(R.string.angle) + ": " + decimalFormat.format(this.level_angle) + (char)0x00B0;
 				drawTextWithBackground(canvas, p, string, color, Color.BLACK, canvas.getWidth() / 2 + pixels_offset_x, text_base_y, false, ybounds_text);
@@ -2311,7 +2494,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				if( remaining_time >= 0 ) {
 					p.setTextSize(42 * scale + 0.5f); // convert dps to pixels
 					p.setTextAlign(Paint.Align.CENTER);
-					drawTextWithBackground(canvas, p, "" + remaining_time, Color.rgb(255, 50, 50), Color.rgb(75, 75, 75), canvas.getWidth() / 2, canvas.getHeight() / 2);
+					drawTextWithBackground(canvas, p, "" + remaining_time, Color.rgb(229, 28, 35), Color.BLACK, canvas.getWidth() / 2, canvas.getHeight() / 2); // Red 500
 				}
 			}
 			else if( this.video_recorder != null && video_start_time_set ) {
@@ -2327,13 +2510,18 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
             	String time_s = hours + ":" + String.format("%02d", mins) + ":" + String.format("%02d", secs);
             	/*if( MyDebug.LOG )
 					Log.d(TAG, "video_time: " + video_time + " " + time_s);*/
-            	if( main_activity.isScreenLocked() ) {
-            		time_s += " " + getResources().getString(R.string.screen_lock_message);
-            	}
     			p.setTextSize(14 * scale + 0.5f); // convert dps to pixels
     			p.setTextAlign(Paint.Align.CENTER);
 				int pixels_offset_y = 3*text_y; // avoid overwriting the zoom label
-				drawTextWithBackground(canvas, p, "" + time_s, Color.rgb(255, 50, 50), Color.BLACK, canvas.getWidth() / 2, text_base_y - pixels_offset_y);
+				int color = Color.rgb(229, 28, 35); // Red 500
+            	if( main_activity.isScreenLocked() ) {
+            		// writing in reverse order, bottom to top
+    				drawTextWithBackground(canvas, p, getResources().getString(R.string.screen_lock_message_2), color, Color.BLACK, canvas.getWidth() / 2, text_base_y - pixels_offset_y);
+            		pixels_offset_y += text_y;
+    				drawTextWithBackground(canvas, p, getResources().getString(R.string.screen_lock_message_1), color, Color.BLACK, canvas.getWidth() / 2, text_base_y - pixels_offset_y);
+            		pixels_offset_y += text_y;
+            	}
+				drawTextWithBackground(canvas, p, time_s, color, Color.BLACK, canvas.getWidth() / 2, text_base_y - pixels_offset_y);
 			}
 		}
 		else if( camera == null ) {
@@ -2411,7 +2599,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			p.setColor(Color.WHITE);
 			p.setStyle(Paint.Style.STROKE);
 			canvas.drawRect(battery_x, battery_y, battery_x+battery_width, battery_y+battery_height, p);
-			p.setColor(battery_frac >= 0.3f ? Color.rgb(50, 150, 50) : Color.rgb(255, 50, 50));
+			p.setColor(battery_frac >= 0.3f ? Color.rgb(37, 155, 36) : Color.rgb(229, 28, 35)); // Green 500 or Red 500
 			p.setStyle(Paint.Style.FILL);
 			canvas.drawRect(battery_x+1, battery_y+1+(1.0f-battery_frac)*(battery_height-2), battery_x+battery_width-1, battery_y+battery_height-1, p);
 		}
@@ -2439,7 +2627,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				int indicator_x = location_x + location_size;
 				int indicator_y = location_y + location_radius/2 + 1;
 				p.setStyle(Paint.Style.FILL_AND_STROKE);
-				p.setColor(location_accuracy < 25.01f ? Color.rgb(50, 150, 50) : Color.YELLOW);
+				p.setColor(location_accuracy < 25.01f ? Color.rgb(37, 155, 36) : Color.rgb(255, 235, 59)); // Green 500 or Yellow 500
 				canvas.drawCircle(indicator_x, indicator_y, location_radius, p);
 			}
 			else {
@@ -2493,7 +2681,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			int cx = canvas.getWidth()/2;
 			int cy = canvas.getHeight()/2;
 			if( Math.abs(this.level_angle) <= close_angle ) { // n.b., use level_angle, not angle or orig_level_angle
-				p.setColor(Color.rgb(50, 150, 50));
+				p.setColor(Color.rgb(20, 231, 21)); // Green A400
 			}
 			else {
 				p.setColor(Color.WHITE);
@@ -2504,9 +2692,9 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		if( this.focus_success != FOCUS_DONE ) {
 			int size = (int) (50 * scale + 0.5f); // convert dps to pixels
 			if( this.focus_success == FOCUS_SUCCESS )
-				p.setColor(Color.GREEN);
+				p.setColor(Color.rgb(20, 231, 21)); // Green A400
 			else if( this.focus_success == FOCUS_FAILED )
-				p.setColor(Color.RED);
+				p.setColor(Color.rgb(229, 28, 35)); // Red 500
 			else
 				p.setColor(Color.WHITE);
 			p.setStyle(Paint.Style.STROKE);
@@ -2527,7 +2715,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			p.setStyle(Paint.Style.FILL); // reset
 		}
 		if( this.using_face_detection && this.faces_detected != null ) {
-			p.setColor(Color.YELLOW);
+			p.setColor(Color.rgb(255, 235, 59)); // Yellow 500
 			p.setStyle(Paint.Style.STROKE);
 			for(Face face : faces_detected) {
 				// Android doc recommends filtering out faces with score less than 50
@@ -2574,7 +2762,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		final float scale = getResources().getDisplayMetrics().density;
 		p.setStyle(Paint.Style.FILL);
 		paint.setColor(background);
-		paint.setAlpha(127);
+		paint.setAlpha(64);
 		int alt_height = 0;
 		if( ybounds_text != null ) {
 			paint.getTextBounds(ybounds_text, 0, ybounds_text.length(), text_bounds);
@@ -2693,21 +2881,13 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				if( MyDebug.LOG )
 					Log.d(TAG, "zoom was: " + parameters.getZoom());
 				parameters.setZoom(new_zoom_factor);
-				try {
-					camera.setParameters(parameters);
-					zoom_factor = new_zoom_factor;
-					if( update_seek_bar ) {
-						Activity activity = (Activity)this.getContext();
-					    SeekBar zoomSeekBar = (SeekBar) activity.findViewById(R.id.zoom_seekbar);
-						zoomSeekBar.setProgress(max_zoom_factor-zoom_factor);
-					}
+	        	setCameraParameters(parameters);
+				zoom_factor = new_zoom_factor;
+				if( update_seek_bar ) {
+					Activity activity = (Activity)this.getContext();
+				    SeekBar zoomSeekBar = (SeekBar) activity.findViewById(R.id.zoom_seekbar);
+					zoomSeekBar.setProgress(max_zoom_factor-zoom_factor);
 				}
-	        	catch(RuntimeException e) {
-	        		// crash reported in v1.3 on device "PANTONE 5 SoftBank 107SH (SBM107SH)"
-		    		if( MyDebug.LOG )
-		    			Log.e(TAG, "runtime exception in ZoomTo()");
-					e.printStackTrace();
-	        	}
 	    		clearFocusAreas();
 			}
         }
@@ -2739,25 +2919,17 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				if( MyDebug.LOG )
 					Log.d(TAG, "change exposure from " + current_exposure + " to " + new_exposure);
 				parameters.setExposureCompensation(new_exposure);
-				try {
-					camera.setParameters(parameters);
-					// now save
-					SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
-					SharedPreferences.Editor editor = sharedPreferences.edit();
-					editor.putString(getExposurePreferenceKey(), "" + new_exposure);
-					editor.apply();
-		    		showToast(change_exposure_toast, getResources().getString(R.string.exposure_compensation) + " " + (new_exposure > 0 ? "+" : "") + new_exposure);
-		    		if( update_seek_bar ) {
-		    			MainActivity main_activity = (MainActivity)this.getContext();
-		    			main_activity.setSeekBarExposure();
-		    		}
-				}
-	        	catch(RuntimeException e) {
-	        		// just to be safe
-		    		if( MyDebug.LOG )
-		    			Log.e(TAG, "runtime exception in changeExposure()");
-					e.printStackTrace();
-	        	}
+	        	setCameraParameters(parameters);
+				// now save
+				SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
+				SharedPreferences.Editor editor = sharedPreferences.edit();
+				editor.putString(getExposurePreferenceKey(), "" + new_exposure);
+				editor.apply();
+	    		showToast(change_exposure_toast, getResources().getString(R.string.exposure_compensation) + " " + (new_exposure > 0 ? "+" : "") + new_exposure);
+	    		if( update_seek_bar ) {
+	    			MainActivity main_activity = (MainActivity)this.getContext();
+	    			main_activity.setSeekBarExposure();
+	    		}
 			}
 		}
 	}
@@ -2814,14 +2986,19 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			toast_string = getResources().getString(R.string.video) + ": " + profile.videoFrameWidth + "x" + profile.videoFrameHeight + ", " + profile.videoFrameRate + "fps, " + bitrate_string;
 			boolean record_audio = sharedPreferences.getBoolean("preference_record_audio", true);
 			if( !record_audio ) {
-				toast_string += "\nAudio Disabled";
+				toast_string += "\n" + getResources().getString(R.string.audio_disabled);
 			}
 			if( timer_value.length() > 0 && !timer_value.equals("0") ) {
 				String [] entries_array = getResources().getStringArray(R.array.preference_video_max_duration_entries);
 				String [] values_array = getResources().getStringArray(R.array.preference_video_max_duration_values);
 				int index = Arrays.asList(values_array).indexOf(timer_value);
-				String entry = entries_array[index];
-				toast_string += "\nMax duration: " + entry;
+				if( index != -1 ) { // just in case!
+					String entry = entries_array[index];
+					toast_string += "\n" + getResources().getString(R.string.max_duration) +": " + entry;
+				}
+			}
+			if( sharedPreferences.getBoolean("preference_video_flash", false) && supportsFlash() ) {
+				toast_string += "\n" + getResources().getString(R.string.preference_video_flash);
 			}
 		}
 		else {
@@ -2834,18 +3011,21 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		Camera.Parameters parameters = camera.getParameters();
 		int current_exposure = parameters.getExposureCompensation();
 		if( current_exposure != 0 ) {
-			toast_string += "\nExposure: " + (current_exposure > 0 ? "+" : "") + current_exposure;
+			toast_string += "\n" + getResources().getString(R.string.exposure) + ": " + (current_exposure > 0 ? "+" : "") + current_exposure;
 		}
 		String scene_mode = parameters.getSceneMode();
     	if( scene_mode != null && !scene_mode.equals(Camera.Parameters.SCENE_MODE_AUTO) ) {
-    		toast_string += "\nScene mode: " + scene_mode;
+    		toast_string += "\n" + getResources().getString(R.string.scene_mode) + ": " + scene_mode;
     	}
 		String lock_orientation = sharedPreferences.getString("preference_lock_orientation", "none");
-		if( lock_orientation.equals("landscape") ) {
-			toast_string += "\nLocked to landscape";
-		}
-		else if( lock_orientation.equals("portrait") ) {
-			toast_string += "\nLocked to portrait";
+		if( !lock_orientation.equals("none") ) {
+			String [] entries_array = getResources().getStringArray(R.array.preference_lock_orientation_entries);
+			String [] values_array = getResources().getStringArray(R.array.preference_lock_orientation_values);
+			int index = Arrays.asList(values_array).indexOf(lock_orientation);
+			if( index != -1 ) { // just in case!
+				String entry = entries_array[index];
+				toast_string += "\n" + entry;
+			}
 		}
 		
 		showToast(switch_video_toast, toast_string, Toast.LENGTH_LONG);
@@ -2854,6 +3034,12 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	private void matchPreviewFpsToVideo() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "matchPreviewFpsToVideo()");
+		if( !has_current_fps_range ) {
+			// exit, as we don't have a current fps to reset back to later
+			if( MyDebug.LOG )
+				Log.d(TAG, "current fps not available");
+			return;
+		}
 		CamcorderProfile profile = getCamcorderProfile();
 		Camera.Parameters parameters = camera.getParameters();
 
@@ -2899,14 +3085,14 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	    	if( MyDebug.LOG )
 	    		Log.d(TAG, "    can't find match for fps range, so choose closest: " + selected_min_fps + " to " + selected_max_fps);
 	        parameters.setPreviewFpsRange(selected_min_fps, selected_max_fps);
-	        camera.setParameters(parameters);
+        	setCameraParameters(parameters);
         }
         else {
 	    	if( MyDebug.LOG ) {
     			Log.d(TAG, "    chosen fps range: " + selected_min_fps + " to " + selected_max_fps);
 	    	}
 	        parameters.setPreviewFpsRange(selected_min_fps, selected_max_fps);
-	        camera.setParameters(parameters);
+        	setCameraParameters(parameters);
         }
 	}
 	
@@ -2927,19 +3113,8 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			showPhotoVideoToast();
 		}
 		else {
-			//if( is_taking_photo_on_timer ) {
 			if( this.isOnTimer() ) {
-				takePictureTimerTask.cancel();
-				takePictureTimerTask = null;
-				if( beepTimerTask != null ) {
-					beepTimerTask.cancel();
-					beepTimerTask = null;
-				}
-				/*is_taking_photo_on_timer = false;
-				is_taking_photo = false;*/
-				this.phase = PHASE_NORMAL;
-				if( MyDebug.LOG )
-					Log.d(TAG, "cancelled camera timer");
+				cancelTimer();
 				this.is_video = true;
 			}
 			//else if( this.is_taking_photo ) {
@@ -2958,7 +3133,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		}
 		
 		if( is_video != old_is_video ) {
-			updateFocusForVideo(true);
+			updateFocusForVideo(false); // don't do autofocus, as it'll be cancelled when restarting preview
 
 			Activity activity = (Activity)this.getContext();
 			ImageButton view = (ImageButton)activity.findViewById(R.id.take_photo);
@@ -2978,13 +3153,13 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 					this.is_preview_started = false;
 				}
 				setPreviewSize();
-				if( !is_video ) {
+				if( !is_video && has_current_fps_range ) {
 					// if is_video is true, we set the preview fps range in startCameraPreview()
 					if( MyDebug.LOG )
 						Log.d(TAG, "    reset preview to current fps range: " + current_fps_range[Camera.Parameters.PREVIEW_FPS_MIN_INDEX] + " to " + current_fps_range[Camera.Parameters.PREVIEW_FPS_MAX_INDEX]);
 					Camera.Parameters parameters = camera.getParameters();
 			        parameters.setPreviewFpsRange(current_fps_range[Camera.Parameters.PREVIEW_FPS_MIN_INDEX], current_fps_range[Camera.Parameters.PREVIEW_FPS_MAX_INDEX]);
-			        camera.setParameters(parameters);
+		        	setCameraParameters(parameters);
 				}
 				// always start the camera preview, even if it was previously paused
 		        this.startCameraPreview();
@@ -3075,21 +3250,23 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		}
 		if( this.supported_flash_values != null && this.supported_flash_values.size() > 1 ) {
 			int new_flash_index = (current_flash_index+1) % this.supported_flash_values.size();
-			updateFlash(new_flash_index);
-
-			// now save
-			String flash_value = supported_flash_values.get(current_flash_index);
-			if( MyDebug.LOG ) {
-				Log.d(TAG, "save new flash_value: " + flash_value);
-			}
-			SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
-			SharedPreferences.Editor editor = sharedPreferences.edit();
-			editor.putString(getFlashPreferenceKey(cameraId), flash_value);
-			editor.apply();
+			updateFlash(new_flash_index, true);
 		}
 	}
 
-	private boolean updateFlash(String flash_value) {
+	void updateFlash(String focus_value) {
+		if( MyDebug.LOG )
+			Log.d(TAG, "updateFlash(): " + focus_value);
+		if( this.phase == PHASE_TAKING_PHOTO && !is_video ) {
+			// just to be safe - risk of cancelling the autofocus before taking a photo, or otherwise messing things up
+			if( MyDebug.LOG )
+				Log.d(TAG, "currently taking a photo");
+			return;
+		}
+		updateFlash(focus_value, true);
+	}
+
+	private boolean updateFlash(String flash_value, boolean save) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "updateFlash(): " + flash_value);
 		if( supported_flash_values != null ) {
@@ -3097,14 +3274,14 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			if( MyDebug.LOG )
 				Log.d(TAG, "new_flash_index: " + new_flash_index);
 	    	if( new_flash_index != -1 ) {
-	    		updateFlash(new_flash_index);
+	    		updateFlash(new_flash_index, save);
 	    		return true;
 	    	}
 		}
     	return false;
 	}
 	
-	private void updateFlash(int new_flash_index) {
+	private void updateFlash(int new_flash_index, boolean save) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "updateFlash(): " + new_flash_index);
 		// updates the Flash button, and Flash camera mode
@@ -3114,10 +3291,9 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			if( MyDebug.LOG )
 				Log.d(TAG, "    current_flash_index is now " + current_flash_index + " (initial " + initial + ")");
 
-			Activity activity = (Activity)this.getContext();
-		    ImageButton flashButton = (ImageButton) activity.findViewById(R.id.flash);
+			//Activity activity = (Activity)this.getContext();
 	    	String [] flash_entries = getResources().getStringArray(R.array.flash_entries);
-	    	String [] flash_icons = getResources().getStringArray(R.array.flash_icons);
+	    	//String [] flash_icons = getResources().getStringArray(R.array.flash_icons);
 			String flash_value = supported_flash_values.get(current_flash_index);
 			if( MyDebug.LOG )
 				Log.d(TAG, "    flash_value: " + flash_value);
@@ -3128,9 +3304,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	    		if( flash_value.equals(flash_values[i]) ) {
 					if( MyDebug.LOG )
 						Log.d(TAG, "    found entry: " + i);
-	    			//flashButton.setText(flash_entries[i]);
-	    			int resource = getResources().getIdentifier(flash_icons[i], null, activity.getApplicationContext().getPackageName());
-	    			flashButton.setImageResource(resource);
 	    			if( !initial ) {
 	    				showToast(flash_toast, flash_entries[i]);
 	    			}
@@ -3138,6 +3311,13 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	    		}
 	    	}
 	    	this.setFlash(flash_value);
+	    	if( save ) {
+				// now save
+				SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
+				SharedPreferences.Editor editor = sharedPreferences.edit();
+				editor.putString(getFlashPreferenceKey(cameraId), flash_value);
+				editor.apply();
+	    	}
 		}
 	}
 
@@ -3154,11 +3334,26 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		Camera.Parameters parameters = camera.getParameters();
 		String flash_mode = convertFlashValueToMode(flash_value);
     	if( flash_mode.length() > 0 && !flash_mode.equals(parameters.getFlashMode()) ) {
+    		if( parameters.getFlashMode().equals(Camera.Parameters.FLASH_MODE_TORCH) && !flash_mode.equals(Camera.Parameters.FLASH_MODE_OFF) ) {
+    			// workaround for bug on Nexus 5 where torch doesn't switch off until we set FLASH_MODE_OFF
+    			if( MyDebug.LOG )
+    				Log.d(TAG, "first turn torch off");
+        		parameters.setFlashMode(flash_mode);
+            	setCameraParameters(parameters);
+        		parameters = camera.getParameters();
+    		}
     		parameters.setFlashMode(flash_mode);
-    		camera.setParameters(parameters);
+        	setCameraParameters(parameters);
     	}
 	}
 
+	// this returns the flash mode indicated by the UI, rather than from the camera parameters (may be different, e.g., in startup autofocus!)
+    public String getCurrentFlashValue() {
+    	if( this.current_flash_index == -1 )
+    		return null;
+    	return this.supported_flash_values.get(current_flash_index);
+    }
+    
 	// this returns the flash mode indicated by the UI, rather than from the camera parameters (may be different, e.g., in startup autofocus!)
 	public String getCurrentFlashMode() {
 		if( current_flash_index == -1 )
@@ -3211,8 +3406,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				}
 			}*/
 			// also resort as well as converting
-			// first one will be the default choice
-			// note: important for FLASH_MODE_OFF to be immediately after FLASH_MODE_TORCH, due to bug on Nexus 5 where torch doesn't switch off until we set FLASH_MODE_OFF
+			if( supported_flash_modes.contains(Camera.Parameters.FLASH_MODE_OFF) ) {
+				output_modes.add("flash_off");
+				if( MyDebug.LOG )
+					Log.d(TAG, " supports flash_off");
+			}
 			if( supported_flash_modes.contains(Camera.Parameters.FLASH_MODE_AUTO) ) {
 				output_modes.add("flash_auto");
 				if( MyDebug.LOG )
@@ -3227,11 +3425,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				output_modes.add("flash_torch");
 				if( MyDebug.LOG )
 					Log.d(TAG, " supports flash_torch");
-			}
-			if( supported_flash_modes.contains(Camera.Parameters.FLASH_MODE_OFF) ) {
-				output_modes.add("flash_off");
-				if( MyDebug.LOG )
-					Log.d(TAG, " supports flash_off");
 			}
 			if( supported_flash_modes.contains(Camera.Parameters.FLASH_MODE_RED_EYE) ) {
 				output_modes.add("flash_red_eye");
@@ -3258,10 +3451,16 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		}
 	}
 
-	void updateFocus(String focus_value) {
+	void updateFocus(String focus_value, boolean quiet, boolean auto_focus) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "updateFocus(): " + focus_value);
-		updateFocus(focus_value, true, true, false);
+		if( this.phase == PHASE_TAKING_PHOTO ) {
+			// just to be safe - otherwise problem that changing the focus mode will cancel the autofocus before taking a photo, so we never take a photo, but is_taking_photo remains true!
+			if( MyDebug.LOG )
+				Log.d(TAG, "currently taking a photo");
+			return;
+		}
+		updateFocus(focus_value, quiet, true, auto_focus);
 	}
 
 	private boolean updateFocus(String focus_value, boolean quiet, boolean save, boolean auto_focus) {
@@ -3289,10 +3488,9 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			if( MyDebug.LOG )
 				Log.d(TAG, "    current_focus_index is now " + current_focus_index + " (initial " + initial + ")");
 
-			Activity activity = (Activity)this.getContext();
-		    ImageButton focusModeButton = (ImageButton) activity.findViewById(R.id.focus_mode);
+			//Activity activity = (Activity)this.getContext();
 	    	String [] focus_entries = getResources().getStringArray(R.array.focus_mode_entries);
-	    	String [] focus_icons = getResources().getStringArray(R.array.focus_mode_icons);
+	    	//String [] focus_icons = getResources().getStringArray(R.array.focus_mode_icons);
 			String focus_value = supported_focus_values.get(current_focus_index);
 			if( MyDebug.LOG )
 				Log.d(TAG, "    focus_value: " + focus_value);
@@ -3303,8 +3501,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	    		if( focus_value.equals(focus_values[i]) ) {
 					if( MyDebug.LOG )
 						Log.d(TAG, "    found entry: " + i);
-	    			int resource = getResources().getIdentifier(focus_icons[i], null, activity.getApplicationContext().getPackageName());
-	    			focusModeButton.setImageResource(resource);
 	    			if( !initial && !quiet ) {
 	    				showToast(focus_toast, focus_entries[i]);
 	    			}
@@ -3323,9 +3519,10 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		}
 	}
 	
-	public String getFocusValue() {
+	// this returns the flash mode indicated by the UI, rather than from the camera parameters
+	public String getCurrentFocusValue() {
 		if( MyDebug.LOG )
-			Log.d(TAG, "getFocusValue()");
+			Log.d(TAG, "getCurrentFocusValue()");
 		if( camera == null ) {
 			if( MyDebug.LOG )
 				Log.d(TAG, "camera not opened!");
@@ -3368,7 +3565,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     		if( MyDebug.LOG )
     			Log.d(TAG, "setFocusValue() received unknown focus value " + focus_value);
     	}
-		camera.setParameters(parameters);
+    	setCameraParameters(parameters);
 		clearFocusAreas();
 		// n.b., we reset even for manual focus mode
 		if( auto_focus ) {
@@ -3402,7 +3599,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	        cancelAutoFocus();
 			Camera.Parameters parameters = camera.getParameters();
 			parameters.setAutoExposureLock(is_exposure_locked);
-			camera.setParameters(parameters);
+        	setCameraParameters(parameters);
 			Activity activity = (Activity)this.getContext();
 		    ImageButton exposureLockButton = (ImageButton) activity.findViewById(R.id.exposure_lock);
 			exposureLockButton.setImageResource(is_exposure_locked ? R.drawable.exposure_locked : R.drawable.exposure_unlocked);
@@ -3415,7 +3612,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		List<String> output_modes = new Vector<String>();
 		if( supported_focus_modes != null ) {
 			// also resort as well as converting
-			// first one will be the default choice
 			if( supported_focus_modes.contains(Camera.Parameters.FOCUS_MODE_AUTO) ) {
 				output_modes.add("focus_mode_auto");
 				if( MyDebug.LOG ) {
@@ -3478,17 +3674,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		}
 		//if( is_taking_photo_on_timer ) {
 		if( this.isOnTimer() ) {
-			takePictureTimerTask.cancel();
-			takePictureTimerTask = null;
-			if( beepTimerTask != null ) {
-				beepTimerTask.cancel();
-				beepTimerTask = null;
-			}
-			/*is_taking_photo_on_timer = false;
-			is_taking_photo = false;*/
-			this.phase = PHASE_NORMAL;
-			if( MyDebug.LOG )
-				Log.d(TAG, "cancelled camera timer");
+			cancelTimer();
 		    showToast(take_photo_toast, R.string.cancelled_timer);
 			return;
 		}
@@ -3582,9 +3768,9 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		take_photo_time = System.currentTimeMillis() + timer_delay;
 		if( MyDebug.LOG )
 			Log.d(TAG, "take photo at: " + take_photo_time);
-		if( !repeated ) {
+		/*if( !repeated ) {
 			showToast(take_photo_toast, R.string.started_timer);
-		}
+		}*/
     	takePictureTimer.schedule(takePictureTimerTask = new TakePictureTimerTask(), timer_delay);
 
 		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
@@ -3624,14 +3810,14 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			String flash_mode_from_ui = convertFlashValueToMode(flash_mode_ui);
 	    	if( flash_mode_from_ui.length() > 0 ) {
 	    		parameters.setFlashMode(flash_mode_from_ui);
-	    		camera.setParameters(parameters);
+	        	setCameraParameters(parameters);
 	    	}
 			return;
 		}
 		// turn on torch
         cancelAutoFocus();
 		parameters.setFlashMode(Parameters.FLASH_MODE_TORCH);
-		camera.setParameters(parameters);
+    	setCameraParameters(parameters);
 		try {
 			Thread.sleep(100);
 		}
@@ -3641,7 +3827,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		// turn off torch
         cancelAutoFocus();
 		parameters.setFlashMode(flash_mode);
-		camera.setParameters(parameters);
+    	setCameraParameters(parameters);
 	}
 	
 	private void onVideoError(int message_id, int what, int extra, String debug_value) {
@@ -3684,7 +3870,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     		if( MyDebug.LOG )
     			Log.d(TAG, "start video recording");
     		focus_success = FOCUS_DONE; // clear focus rectangle (don't do for taking photos yet)
-			MainActivity main_activity = (MainActivity)Preview.this.getContext();
+    		MainActivity main_activity = (MainActivity)Preview.this.getContext();
 			File videoFile = main_activity.getOutputMediaFile(MainActivity.MEDIA_TYPE_VIDEO);
 			if( videoFile == null ) {
 	            Log.e(TAG, "Couldn't create media video file; check storage permissions?");
@@ -3826,7 +4012,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	            	video_recorder.start();
 	            	video_start_time = System.currentTimeMillis();
 	            	video_start_time_set = true;
-    				showToast(stopstart_video_toast, R.string.started_recording_video);
+    				//showToast(stopstart_video_toast, R.string.started_recording_video);
     				// don't send intent for ACTION_MEDIA_SCANNER_SCAN_FILE yet - wait until finished, so we get completed file
 
     				// handle restart timer
@@ -4555,7 +4741,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     	{
 			Camera.Parameters parameters = camera.getParameters();
 			parameters.setRotation(getImageVideoRotation());
-			camera.setParameters(parameters);
+        	setCameraParameters(parameters);
 
 			SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
 			boolean enable_sound = sharedPreferences.getBoolean("preference_shutter_sound", true);
@@ -4566,7 +4752,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
             }
     		if( MyDebug.LOG )
     			Log.d(TAG, "about to call takePicture");
-    		String toast_text = "";
+    		/*String toast_text = "";
     		if( n_burst > 1 ) {
     			int photo = (n_burst-remaining_burst_photos);
     			toast_text = getResources().getString(R.string.taking_photo) + "... (" +  photo + " / " + n_burst + ")";
@@ -4575,11 +4761,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     			toast_text = getResources().getString(R.string.taking_photo) + "...";
     		}
     		if( MyDebug.LOG )
-    			Log.d(TAG, toast_text);
+    			Log.d(TAG, toast_text);*/
     		try {
     			camera.takePicture(shutterCallback, null, jpegPictureCallback);
         		count_cameraTakePicture++;
-    			showToast(take_photo_toast, toast_text);
+    			//showToast(take_photo_toast, toast_text);
     		}
     		catch(RuntimeException e) {
     			// just in case? We got a RuntimeException report here from 1 user on Google Play; I also encountered it myself once of Galaxy Nexus when starting up
@@ -4710,7 +4896,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     			if( startup && old_flash != null && old_flash != Camera.Parameters.FLASH_MODE_OFF ) {
         			set_flash_after_autofocus = old_flash;
     				parameters.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
-    				camera.setParameters(parameters);
+    	        	setCameraParameters(parameters);
     			}
 		        Camera.AutoFocusCallback autoFocusCallback = new Camera.AutoFocusCallback() {
 					@Override
@@ -4791,9 +4977,9 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			Camera.Parameters parameters = camera.getParameters();
 			parameters.setFlashMode(set_flash_after_autofocus);
 			set_flash_after_autofocus = "";
-			camera.setParameters(parameters);
+        	setCameraParameters(parameters);
 		}
-		if( this.using_face_detection ) {
+		if( this.using_face_detection && !cancelled ) {
 			// On some devices such as mtk6589, face detection does not resume as written in documentation so we have
 			// to cancelfocus when focus is finished
 			if( camera != null ) {
@@ -4833,7 +5019,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				// getFocusMode() is documented as never returning null, however I've had null pointer exceptions reported in Google Play
 	            if( focus_mode != null && !focus_mode.equals(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO) ) {
 					parameters.setRecordingHint(this.is_video);
-		            camera.setParameters(parameters);
+		        	setCameraParameters(parameters);
 	            }
 			}
     		if( this.is_video ) {
@@ -4901,28 +5087,28 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     private void showGUI(final boolean show) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "showGUI: " + show);
-		final Activity activity = (Activity)this.getContext();
-		activity.runOnUiThread(new Runnable() {
+		final MainActivity main_activity = (MainActivity)this.getContext();
+		main_activity.runOnUiThread(new Runnable() {
 			public void run() {
 		    	final int visibility = show ? View.VISIBLE : View.GONE;
-			    View switchCameraButton = (View) activity.findViewById(R.id.switch_camera);
-			    View switchVideoButton = (View) activity.findViewById(R.id.switch_video);
-			    View flashButton = (View) activity.findViewById(R.id.flash);
-			    View focusButton = (View) activity.findViewById(R.id.focus_mode);
-			    View exposureButton = (View) activity.findViewById(R.id.exposure);
-			    View exposureLockButton = (View) activity.findViewById(R.id.exposure_lock);
+			    View switchCameraButton = (View) main_activity.findViewById(R.id.switch_camera);
+			    View switchVideoButton = (View) main_activity.findViewById(R.id.switch_video);
+			    View exposureButton = (View) main_activity.findViewById(R.id.exposure);
+			    View exposureLockButton = (View) main_activity.findViewById(R.id.exposure_lock);
+			    View popupButton = (View) main_activity.findViewById(R.id.popup);
 			    if( Camera.getNumberOfCameras() > 1 )
 			    	switchCameraButton.setVisibility(visibility);
 			    if( !is_video )
 			    	switchVideoButton.setVisibility(visibility); // still allow switch video when recording video
-			    if( supported_flash_values != null && !is_video )
-			    	flashButton.setVisibility(visibility); // still allow flash mode when recording video
-			    if( supported_focus_values != null )
-			    	focusButton.setVisibility(visibility);
 			    if( exposures != null && !is_video ) // still allow exposure when recording video
 			    	exposureButton.setVisibility(visibility);
 			    if( is_exposure_locked_supported && !is_video ) // still allow exposure lock when recording video
 			    	exposureLockButton.setVisibility(visibility);
+			    if( !show ) {
+			    	main_activity.closePopup(); // we still allow the popup when recording video, but need to update the UI (so it only shows flash options), so easiest to just close
+			    }
+			    if( !is_video || supported_flash_values == null )
+			    	popupButton.setVisibility(visibility); // still allow popup in order to change flash mode when recording video
 			}
 		});
     }
@@ -4994,19 +5180,19 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     	return supports_video_stabilization;
     }
 
-    List<String> getSupportedColorEffects() {
+    public List<String> getSupportedColorEffects() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "getSupportedColorEffects");
 		return this.color_effects;
     }
 
-    List<String> getSupportedSceneModes() {
+    public List<String> getSupportedSceneModes() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "getSupportedSceneModes");
 		return this.scene_modes;
     }
 
-    List<String> getSupportedWhiteBalances() {
+    public List<String> getSupportedWhiteBalances() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "getSupportedWhiteBalances");
 		return this.white_balances;
@@ -5018,7 +5204,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     	return this.iso_key;
     }
     
-    List<String> getSupportedISOs() {
+    public List<String> getSupportedISOs() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "getSupportedISOs");
 		return this.isos;
@@ -5091,11 +5277,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		return this.video_sizes;
     }
     
-	List<String> getSupportedFlashValues() {
+	public List<String> getSupportedFlashValues() {
 		return supported_flash_values;
 	}
 
-	List<String> getSupportedFocusValues() {
+	public List<String> getSupportedFocusValues() {
 		return supported_focus_values;
 	}
 
@@ -5121,10 +5307,14 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     }
     
     void onResume() {
+    	onResume(null);
+    }
+    
+    void onResume(String toast_message) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "onResume");
 		this.app_is_paused = false;
-		this.openCamera();
+		this.openCamera(toast_message);
     }
 
     void onPause() {
@@ -5166,7 +5356,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			private Paint paint = new Paint();
 			private Rect bounds = new Rect();
 			private Rect sub_bounds = new Rect();
-			private Rect rect = new Rect();
+			private RectF rect = new RectF();
 
 			public RotatedTextView(String text, Context context) {
 				super(context);
@@ -5214,15 +5404,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				rect.bottom = canvas.getHeight()/2 + bounds.bottom + padding + offset_y;
 
 				paint.setStyle(Paint.Style.FILL);
-				paint.setColor(Color.rgb(75, 75, 75));
-				canvas.drawRect(rect.left, rect.top, rect.right, rect.bottom, paint);
+				paint.setColor(Color.rgb(50, 50, 50));
+				//canvas.drawRect(rect, paint);
+				final float radius = (24 * scale + 0.5f); // convert dps to pixels
+				canvas.drawRoundRect(rect, radius, radius, paint);
 
-				paint.setStyle(Paint.Style.STROKE);
-				paint.setColor(Color.rgb(150, 150, 150));
-				canvas.drawLine(rect.left, rect.top, rect.right, rect.top, paint);
-				canvas.drawLine(rect.left, rect.top, rect.left, rect.bottom, paint);
-
-				paint.setStyle(Paint.Style.FILL); // needed for Android 4.4!
 				paint.setColor(Color.WHITE);
 				int ypos = canvas.getHeight()/2 + offset_y - ((lines.length-1) * height)/2;
 				for(String line : lines) {
@@ -5265,7 +5451,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     void locationChanged(Location location) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "locationChanged");
-		this.has_received_location = true;
+		this.test_has_received_location = true;
 		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this.getContext());
 		boolean store_location = sharedPreferences.getBoolean("preference_location", false);
 		if( store_location ) {
@@ -5280,6 +5466,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	            this.location_accuracy = location.getAccuracy();
     		}
 		}
+    }
+    
+    void resetLocation() {
+        this.has_set_location = false;
+        this.test_has_received_location = false;
     }
     
     private void updateParametersFromLocation() {
@@ -5309,24 +5500,16 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	            if( location.getTime() != 0 ) { // from Android camera source
 	            	parameters.setGpsTimestamp(location.getTime() / 1000);
 	            }
-	            try {
-		            camera.setParameters(parameters);
-	            }
-			    catch(RuntimeException e) {
-			    	// received this crash from Google Play
-	        		if( MyDebug.LOG )
-	        			Log.d(TAG, "failed to set parameters for gps info");
-	        		e.printStackTrace();
-			    }
+	        	setCameraParameters(parameters);
     		}
     		else {
 	    		if( MyDebug.LOG )
 	    			Log.d(TAG, "removing location data from parameters...");
 	            Camera.Parameters parameters = camera.getParameters();
 	            parameters.removeGpsData();
-	            camera.setParameters(parameters);
+	        	setCameraParameters(parameters);
 	            this.has_set_location = false;
-	    		has_received_location = false;
+	            test_has_received_location = false;
     		}
     	}
     }
@@ -5335,6 +5518,10 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		return is_video;
 	}
 	
+    public boolean isTakingPhoto() {
+    	return this.phase == PHASE_TAKING_PHOTO;
+    }
+
     // must be static, to safely call from other Activities
     public static String getFlashPreferenceKey(int cameraId) {
     	return "flash_value_" + cameraId;
@@ -5404,12 +5591,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     	return this.is_exposure_locked_supported;
     }
     
-    public String getCurrentFlashValue() {
-    	if( this.current_flash_index == -1 )
-    		return null;
-    	return this.supported_flash_values.get(current_flash_index);
-    }
-    
     public boolean hasFocusArea() {
     	return this.has_focus_area;
     }
@@ -5419,10 +5600,6 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     	return this.phase == PHASE_TAKING_PHOTO || this.phase == PHASE_TIMER;
     }
     
-    public boolean isTakingPhoto() {
-    	return this.phase == PHASE_TAKING_PHOTO;
-    }
-
     public boolean isOnTimer() {
     	//return this.is_taking_photo_on_timer;
     	return this.phase == PHASE_TIMER;
@@ -5434,5 +5611,13 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
     
     public boolean hasSetLocation() {
     	return this.has_set_location;
+    }
+    
+    public int getDisplayOrientation() {
+    	return this.display_orientation;
+    }
+    
+    public boolean isFocusWaiting() {
+    	return focus_success == FOCUS_WAITING;
     }
 }
