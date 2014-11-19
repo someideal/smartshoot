@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="FER" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/FER" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add directory="include" />
+				</Compiler>
+				<Linker>
+					<Add option="`pkg-config opencv --libs`" />
+					<Add option="`pkg-config opencv --cflags`" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/FER" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="-s" />
+					<Add directory="include" />
+				</Compiler>
+				<Linker>
+					<Add option="`pkg-config opencv --libs`" />
+					<Add option="`pkg-config opencv --cflags`" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="`opencv-config --cxxflags`" />
+		</Compiler>
+		<Linker>
+			<Add option="`opencv-config --ldstaticflags`" />
+		</Linker>
+		<Unit filename="BK/AAM/AAM_Basic.h" />
+		<Unit filename="BK/AAM/AAM_CAM.h" />
+		<Unit filename="BK/AAM/AAM_IC.h" />
+		<Unit filename="BK/AAM/AAM_MovieAVI.h" />
+		<Unit filename="BK/AAM/AAM_PAW.h" />
+		<Unit filename="BK/AAM/AAM_PDM.h" />
+		<Unit filename="BK/AAM/AAM_Shape.h" />
+		<Unit filename="BK/AAM/AAM_TDM.h" />
+		<Unit filename="BK/AAM/AAM_Util.h" />
+		<Unit filename="BK/AAM/VJfacedetect.h" />
+		<Unit filename="include/facedetection.h" />
+		<Unit filename="include/morphologyOperator.h" />
+		<Unit filename="include/retinex.h" />
+		<Unit filename="include/tooler.h" />
+		<Unit filename="main.cpp" />
+		<Unit filename="src/AAM/AAM_Basic.cpp" />
+		<Unit filename="src/AAM/AAM_Basic.h" />
+		<Unit filename="src/AAM/AAM_CAM.cpp" />
+		<Unit filename="src/AAM/AAM_CAM.h" />
+		<Unit filename="src/AAM/AAM_IC.cpp" />
+		<Unit filename="src/AAM/AAM_IC.h" />
+		<Unit filename="src/AAM/AAM_MovieAVI.cpp" />
+		<Unit filename="src/AAM/AAM_MovieAVI.h" />
+		<Unit filename="src/AAM/AAM_PAW.cpp" />
+		<Unit filename="src/AAM/AAM_PAW.h" />
+		<Unit filename="src/AAM/AAM_PDM.cpp" />
+		<Unit filename="src/AAM/AAM_PDM.h" />
+		<Unit filename="src/AAM/AAM_Shape.cpp" />
+		<Unit filename="src/AAM/AAM_Shape.h" />
+		<Unit filename="src/AAM/AAM_TDM.cpp" />
+		<Unit filename="src/AAM/AAM_TDM.h" />
+		<Unit filename="src/AAM/AAM_Util.cpp" />
+		<Unit filename="src/AAM/AAM_Util.h" />
+		<Unit filename="src/AAM/VJfacedetect.cpp" />
+		<Unit filename="src/AAM/VJfacedetect.h" />
+		<Unit filename="src/facedetection.cpp" />
+		<Unit filename="src/morphologyOperator.cpp" />
+		<Unit filename="src/retinex.cpp" />
+		<Unit filename="src/tooler.cpp" />
+		<Extensions>
+			<code_completion />
+			<debugger />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
