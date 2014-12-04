@@ -8,11 +8,11 @@
         <item>drawable/flash_red_eye</item>
     </string-array>
     <string-array name="flash_entries">
-        <item>Flash Off</item>
-        <item>Flash Auto</item>
-        <item>Flash On</item>
-        <item>Torch</item>
-        <item>Red Eye</item>
+        <item>关闭闪光灯</item>
+        <item>闪光灯自动</item>
+        <item>打开散光灯</item>
+        <item>闪光灯常开</item>
+        <item>红眼</item>
     </string-array>
     <string-array name="flash_values">
         <item>flash_off</item>
@@ -31,13 +31,13 @@
         <item>drawable/focus_mode_continuous_video</item>
     </string-array>
     <string-array name="focus_mode_entries">
-        <item>Focus Auto</item>
-        <item>Focus Infinity</item>
-        <item>Focus Macro</item>
-        <item>Focus Manual</item>
-        <item>Focus Fixed</item>
-        <item>Focus EDOF</item>
-        <item>Focus Continuous</item>
+        <item>自动焦距</item>
+        <item>超远焦距</item>
+        <item>微焦距</item>
+        <item>手动对焦</item>
+        <item>固定对焦</item>
+        <item>EDOF对焦</item>
+        <item>连续对焦</item>
     </string-array>
     <string-array name="focus_mode_values">
         <item>focus_mode_auto</item>
@@ -59,7 +59,7 @@
         <item>portrait</item>
     </string-array>
     <string-array name="preference_timer_entries">
-        <item>No timer</item>
+        <item>无定时</item>
         <item>1s</item>
         <item>2s</item>
         <item>5s</item>

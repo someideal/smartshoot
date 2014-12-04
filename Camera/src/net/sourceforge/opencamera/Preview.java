@@ -5,11 +5,11 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.text.DateFormat;
-import java.text.DecimalFormat;
+//import java.text.DateFormat;
+//import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
+//import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -78,7 +78,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	private static final String TAG_GPS_IMG_DIRECTION_REF = "GPSImgDirectionRef";
 
 	private Paint p = new Paint();
-	private DecimalFormat decimalFormat = new DecimalFormat("#0.0");
+//	private DecimalFormat decimalFormat = new DecimalFormat("#0.0");
     private Camera.CameraInfo camera_info = new Camera.CameraInfo();
     private Matrix camera_to_preview_matrix = new Matrix();
     private Matrix preview_to_camera_matrix = new Matrix();
@@ -159,6 +159,8 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	
 	private boolean is_exposure_locked_supported = false;
 	private boolean is_exposure_locked = false;
+	
+	private boolean is_smile_off = false;   //笑脸识别默认开启
 
 	private List<String> color_effects = null;
 	private List<String> scene_modes = null;
@@ -188,14 +190,16 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 	private Bitmap location_off_bitmap = null;
 	private Rect location_dest = new Rect();
 	
-	private ToastBoxer switch_camera_toast = new ToastBoxer();
+//	private ToastBoxer switch_camera_toast = new ToastBoxer();
 	private ToastBoxer switch_video_toast = new ToastBoxer();
 	private ToastBoxer flash_toast = new ToastBoxer();
 	private ToastBoxer focus_toast = new ToastBoxer();
 	private ToastBoxer exposure_lock_toast = new ToastBoxer();
+	private ToastBoxer smile_off_toast = new ToastBoxer();
 	private ToastBoxer take_photo_toast = new ToastBoxer();
 	private ToastBoxer stopstart_video_toast = new ToastBoxer();
 	private ToastBoxer change_exposure_toast = new ToastBoxer();
+//	private ToastBoxer free_memory_toast = new ToastBoxer();
 	
 	private int ui_rotation = 0;
 
@@ -2274,6 +2278,8 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		return this.current_rotation;
 	}
 
+	
+	//draw：绘制
 	@Override
 	public void onDraw(Canvas canvas) {
 		/*if( MyDebug.LOG )
@@ -2453,25 +2459,27 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 					canvas.getHeight() / 2, p);*/
 			boolean draw_angle = this.has_level_angle && sharedPreferences.getBoolean("preference_show_angle", true);
 			boolean draw_geo_direction = this.has_geo_direction && sharedPreferences.getBoolean("preference_show_geo_direction", true);
+			
+			//隐藏度数显示
 			if( draw_angle ) {
-				int color = Color.WHITE;
+//				int color = Color.WHITE;
 				p.setTextSize(14 * scale + 0.5f); // convert dps to pixels
-				int pixels_offset_x = 0;
+//				int pixels_offset_x = 0;
 				if( draw_geo_direction ) {
-					pixels_offset_x = - (int) (82 * scale + 0.5f); // convert dps to pixels
+//					pixels_offset_x = - (int) (82 * scale + 0.5f); // convert dps to pixels
 					p.setTextAlign(Paint.Align.LEFT);
 				}
 				else {
 					p.setTextAlign(Paint.Align.CENTER);
 				}
 				if( Math.abs(this.level_angle) <= close_angle ) {
-					color = Color.rgb(20, 231, 21); // Green A400
+//					color = Color.rgb(20, 231, 21); // Green A400
 				}
-				String string = getResources().getString(R.string.angle) + ": " + decimalFormat.format(this.level_angle) + (char)0x00B0;
-				drawTextWithBackground(canvas, p, string, color, Color.BLACK, canvas.getWidth() / 2 + pixels_offset_x, text_base_y, false, ybounds_text);
+//				String string = getResources().getString(R.string.angle) + ": " + decimalFormat.format(this.level_angle) + (char)0x00B0;
+//				drawTextWithBackground(canvas, p, string, color, Color.BLACK, canvas.getWidth() / 2 + pixels_offset_x, text_base_y, false, ybounds_text);
 			}
 			if( draw_geo_direction ) {
-				int color = Color.WHITE;
+//				int color = Color.WHITE;
 				p.setTextSize(14 * scale + 0.5f); // convert dps to pixels
 				if( draw_angle ) {
 					p.setTextAlign(Paint.Align.LEFT);
@@ -2483,8 +2491,10 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				if( geo_angle < 0.0f ) {
 					geo_angle += 360.0f;
 				}
-				String string = " " + getResources().getString(R.string.direction) + ": " + Math.round(geo_angle) + (char)0x00B0;
-				drawTextWithBackground(canvas, p, string, color, Color.BLACK, canvas.getWidth() / 2, text_base_y, false, ybounds_text);
+				
+				//隐藏了屏幕显示度数
+//				String string = " " + getResources().getString(R.string.direction) + ": " + Math.round(geo_angle) + (char)0x00B0;
+//				drawTextWithBackground(canvas, p, string, color, Color.BLACK, canvas.getWidth() / 2, text_base_y, false, ybounds_text);
 			}
 			//if( this.is_taking_photo_on_timer ) {
 			if( this.isOnTimer() ) {
@@ -2552,7 +2562,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			}
 		}
 		if( camera != null && sharedPreferences.getBoolean("preference_free_memory", true) ) {
-			int pixels_offset_y = 1*text_y;
+//			int pixels_offset_y = 1*text_y;
 			p.setTextSize(14 * scale + 0.5f); // convert dps to pixels
 			p.setTextAlign(Paint.Align.CENTER);
 			long time_now = System.currentTimeMillis();
@@ -2564,14 +2574,16 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				}
 			}
 			if( free_memory_gb >= 0.0f ) {
-				drawTextWithBackground(canvas, p, getResources().getString(R.string.free_memory) + ": " + decimalFormat.format(free_memory_gb) + "GB", Color.WHITE, Color.BLACK, canvas.getWidth() / 2, text_base_y - pixels_offset_y, false, ybounds_text);
+//				showToast(free_memory_toast, getResources().getString(R.string.free_memory) + ": " + decimalFormat.format(free_memory_gb) + "GB");
+//				drawTextWithBackground(canvas, p, getResources().getString(R.string.free_memory) + ": " + decimalFormat.format(free_memory_gb) + "GB", Color.WHITE, Color.BLACK, canvas.getWidth() / 2, text_base_y - pixels_offset_y, false, ybounds_text);
 			}
 		}
 		
 		{
 			if( !this.has_battery_frac || System.currentTimeMillis() > this.last_battery_time + 60000 ) {
 				// only check periodically - unclear if checking is costly in any way
-				Intent batteryStatus = main_activity.registerReceiver(null, battery_ifilter);
+				//获取当前系统电量
+				Intent batteryStatus = main_activity.registerReceiver(null, battery_ifilter); 
 				int battery_level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
 				int battery_scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
 				has_battery_frac = true;
@@ -2598,10 +2610,12 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			}
 			p.setColor(Color.WHITE);
 			p.setStyle(Paint.Style.STROKE);
-			canvas.drawRect(battery_x, battery_y, battery_x+battery_width, battery_y+battery_height, p);
+			
+			//将电量的显示隐藏掉
+//			canvas.drawRect(battery_x, battery_y, battery_x+battery_width, battery_y+battery_height, p);
 			p.setColor(battery_frac >= 0.3f ? Color.rgb(37, 155, 36) : Color.rgb(229, 28, 35)); // Green 500 or Red 500
 			p.setStyle(Paint.Style.FILL);
-			canvas.drawRect(battery_x+1, battery_y+1+(1.0f-battery_frac)*(battery_height-2), battery_x+battery_width-1, battery_y+battery_height-1, p);
+//			canvas.drawRect(battery_x+1, battery_y+1+(1.0f-battery_frac)*(battery_height-2), battery_x+battery_width-1, battery_y+battery_height-1, p);
 		}
 		
 		boolean store_location = sharedPreferences.getBoolean("preference_location", false);
@@ -2652,9 +2666,11 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 				location_x = canvas.getWidth() - location_x;
 				p.setTextAlign(Paint.Align.RIGHT);
 			}
-	        Calendar c = Calendar.getInstance();
-	        String current_time = DateFormat.getTimeInstance().format(c.getTime());
-	        drawTextWithBackground(canvas, p, current_time, Color.WHITE, Color.BLACK, location_x, location_y, true);
+			
+			//隐藏时间的显示
+//	        Calendar c = Calendar.getInstance();  //获取当前日期
+//	        String current_time = DateFormat.getTimeInstance().format(c.getTime());
+//	        drawTextWithBackground(canvas, p, current_time, Color.WHITE, Color.BLACK, location_x, location_y, true);
 	    }
 
 		canvas.restore();
@@ -2803,6 +2819,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		canvas.drawText(text, location_x, location_y, paint);
 	}
 
+	//scale:比例     zoom：变焦
 	public void scaleZoom(float scale_factor) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "scaleZoom() " + scale_factor);
@@ -2893,6 +2910,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
         }
 	}
 	
+	//exposure:暴露；展示
 	public void changeExposure(int change, boolean update_seek_bar) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "changeExposure(): " + change);
@@ -2952,11 +2970,13 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			cameraId = (cameraId+1) % n_cameras;
 		    Camera.CameraInfo info = new Camera.CameraInfo();
 		    Camera.getCameraInfo(cameraId, info);
+		    
+		    //隐藏前后摄像头切换时的提示框显示
 		    if( info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT ) {
-				showToast(switch_camera_toast, R.string.front_camera);
+//				showToast(switch_camera_toast, R.string.front_camera);
 		    }
 		    else {
-				showToast(switch_camera_toast, R.string.back_camera);
+//				showToast(switch_camera_toast, R.string.back_camera);
 		    }
 		    //zoom_factor = 0; // reset zoom when switching camera
 			this.openCamera();
@@ -3588,6 +3608,23 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 			showToast(exposure_lock_toast, is_exposure_locked ? R.string.exposure_locked : R.string.exposure_unlocked);
 		}
 	}
+	
+	//笑脸识别切换触发事件
+	void toggleSmileSetting(){
+		is_smile_off = !is_smile_off;
+//		if( is_exposure_locked_supported ) {
+//	        cancelAutoFocus();
+//			Camera.Parameters parameters = camera.getParameters();
+//			parameters.setAutoExposureLock(is_exposure_locked);
+//        	setCameraParameters(parameters);
+			Activity activity = (Activity)this.getContext();
+		    ImageButton exposureLockButton = (ImageButton) activity.findViewById(R.id.smile);
+			exposureLockButton.setImageResource(is_smile_off ? R.drawable.smile_off : R.drawable.smile_up);
+//		}
+		showToast(smile_off_toast, is_smile_off ? R.string.smile_off : R.string.smile_up);
+	}
+	
+
 
 	private void setExposureLocked() {
 		if( camera == null ) {
@@ -3653,6 +3690,7 @@ public class Preview extends SurfaceView implements SurfaceHolder.Callback {
 		return output_modes;
 	}
 	
+	//拍照触发事件
 	void takePicturePressed() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "takePicturePressed");
