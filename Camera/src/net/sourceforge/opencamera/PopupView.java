@@ -36,27 +36,22 @@ public class PopupView extends LinearLayout {
 	private int picture_size_index = -1;
 	private int timer_index = -1;
 
-	private Map<String, View> popup_buttons = new Hashtable<String, View>();   //Map以按键/数值对的形式存储数据，和数组非常相似，在数组中存在的索引，它们本身也是对象
+	private Map<String, View> popup_buttons = new Hashtable<String, View>();
 
 	public PopupView(Context context) {
 		super(context);
 
 		this.setOrientation(LinearLayout.VERTICAL);
 
-		//代码修改界面基本步骤：首先获取activity，再获取view
 		final MainActivity main_activity = (MainActivity)this.getContext();
 		final Preview preview = main_activity.getPreview();
-		
-		
         List<String> supported_flash_values = preview.getSupportedFlashValues();
-        
-        //popupview中的按钮触发事件
     	addButtonOptionsToPopup(supported_flash_values, R.array.flash_icons, R.array.flash_values, getResources().getString(R.string.flash_mode), preview.getCurrentFlashValue(), "TEST_FLASH", new ButtonOptionsPopupListener() {
 			@Override
 			public void onClick(String option) {
 				if( MyDebug.LOG )
 					Log.d(TAG, "clicked flash: " + option);
-				preview.updateFlash(option);	//感觉这和布局出问题有关
+				preview.updateFlash(option);
 				main_activity.closePopup();
 			}
 		});
@@ -78,9 +73,9 @@ public class PopupView extends LinearLayout {
             
     		List<String> supported_isos = preview.getSupportedISOs();
     		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(main_activity);
-    		String current_iso = sharedPreferences.getString(Preview.getISOPreferenceKey(), "自动");
+    		String current_iso = sharedPreferences.getString(Preview.getISOPreferenceKey(), "auto");
     		// n.b., we hardcode the string "ISO" as we don't want it translated - firstly more consistent with the ISO values returned by the driver, secondly need to worry about the size of the buttons, so don't want risk of a translated string being too long
-        	addButtonOptionsToPopup(supported_isos, -1, -1, "感光度", current_iso, "TEST_ISO", new ButtonOptionsPopupListener() {
+        	addButtonOptionsToPopup(supported_isos, -1, -1, "ISO", current_iso, "TEST_ISO", new ButtonOptionsPopupListener() {
     			@Override
     			public void onClick(String option) {
     				if( MyDebug.LOG )
@@ -90,7 +85,7 @@ public class PopupView extends LinearLayout {
     				editor.putString(Preview.getISOPreferenceKey(), option);
     				editor.apply();
 
-    				main_activity.updateForSettings("感光度: " + option);
+    				main_activity.updateForSettings("ISO: " + option);
     				main_activity.closePopup();
     			}
     		});

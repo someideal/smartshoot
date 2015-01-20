@@ -3,41 +3,19 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
-    tools:context=".MainActivity" >     
-    <!-- 应该是表表示可以在代码mainActivity中渲染xml中已经写好的上下文，.B., Android Lint whinges that android:background above causes overdraw, however we need this so that any
+    tools:context=".MainActivity" >
+    <!-- N.B., Android Lint whinges that android:background above causes overdraw, however we need this so that any
          blank area around the preview is black rather than white. Although this could be fixed by changing to a dark
          theme, this then looks undesirable for the MyPreferenceFragment, and unclear how to change a theme for a
          PreferenceFragment. -->
-         
-         
-	<!-- FrameLayout是最简单的布局了。所有放在布局里的控件，都按照层次堆叠在屏幕的左上角。后加进来的控件覆盖前面的控件。这个是输出照片的view的一个布局，选择这个布局很合理h
-	1. wrap_content：组件的大小以能装入其内容即可； 
- 	2. fill_parent：组件会显示得和其父组件一样大，并填充剩余的空间（在 API Level 8中命名为 match_parent）。 
- 	3. centerInParent：居于父件之中
- 	4. 这是镜头显示区的布局-->
+
     <FrameLayout
         android:id="@+id/preview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-      	android:layout_alignParentLeft = "true"
         android:layout_centerInParent="true"
         />
     
-    <!--这是拍照按钮的布局设置
-    	1. padding边距值设置
-    	2.  android:scaleType是控制图片如何resized/moved来匹对ImageView的size。ImageView.ScaleType / android:scaleType值的意义区别： 
-			center  按图片的原来size居中显示，当图片长/宽超过View的长/宽，则截取图片的居中部分显示 
-			centerCrop  按比例扩大图片的size居中显示，使得图片长(宽)等于或大于View的长(宽) 
-			centerInside  将图片的内容完整居中显示，通过按比例缩小或原来的size使得图片长/宽等于或小于View的长/宽 
-			fitCenter  把图片按比例扩大/缩小到View的宽度，居中显示 
-			fitEnd   把图片按比例扩大/缩小到View的宽度，显示在View的下部分位置 
-			fitStart  把图片按比例扩大/缩小到View的宽度，显示在View的上部分位置 
-			fitXY  把图片不按比例 扩大/缩小到View的大小显示 
-			matrix 用矩阵来绘制，动态缩小放大图片来显示。
-		3.	contentDescription:相当于控件img的缺省图片时（alt属性）显示的文字。
-			如果您控件的图片没有设置或图片找不到啦，显示不出来了，就显示contentDescription的设置文字！
-		4.	onClick:绑定监听事件
-		5.	layout_centerVertical：控件垂直局中-->
     <ImageButton
         android:id="@+id/take_photo"
         android:layout_width="100dp"
@@ -50,30 +28,14 @@
         android:layout_centerVertical="true"
 		android:background="@null"
         />
-    
-    <!-- 这是设置笑脸识别功能按钮 -->
-	<ImageButton
-        android:id="@+id/smile"
-        android:layout_width="50dp"
-        android:layout_height="50dp"
-        android:padding="5dp"
-        android:scaleType="fitCenter"
-        android:contentDescription="@string/take_photo"
-        android:src="@drawable/smile_up"
-        android:onClick="clickedSmileSetting"
-		android:background="@null"
-        />
-	
-    <!--这是 
-    	alpha:透明度选项-->
+
     <ZoomControls
         android:id="@+id/zoom"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:alpha="1"
+        android:alpha="0.5"
         />
 
-    <!-- 这是 -->
     <SeekBar
         android:id="@+id/zoom_seekbar"
         android:layout_width="150dp"
@@ -82,100 +44,83 @@
         android:layout_marginRight="10dp"
         />
     
-    <!-- 这是设置按钮的布局  按钮均有自己的默认背景色  若不要背景  需将该属性值设置为null-->
     <ImageButton
         android:id="@+id/settings"
         android:layout_width="50dp"
         android:layout_height="50dp"
-        android:padding="5dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/action_settings"
         android:src="@drawable/settings"
         android:onClick="clickedSettings"
-        android:background="@null"
         />
-	
-    <!-- 这是弹出按钮的布局 -->
+
     <ImageButton
         android:id="@+id/popup"
         android:layout_width="50dp"
         android:layout_height="50dp"
-        android:padding="5dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/action_popup"
         android:src="@drawable/popup"
         android:onClick="clickedPopupSettings"
-        android:layout_centerVertical="true"
-        android:background="@null"
         />
     
-    <!-- 这是照片图库按钮的布局 -->
     <ImageButton
         android:id="@+id/gallery"
-        android:layout_width="100dp"
-        android:layout_height="100dp"
-        android:padding="25dp"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/gallery"
         android:src="@drawable/gallery"
         android:onClick="clickedGallery"
-        android:background="@null"
         />
 
-    <!-- 这是是否关闭曝光的按钮布局 -->
     <ImageButton
         android:id="@+id/exposure_lock"
         android:layout_width="50dp"
         android:layout_height="50dp"
-        android:padding="5dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/exposure_lock"
         android:onClick="clickedExposureLock"
-        android:background="@null"
-        android:visibility="gone"
         />
 
-    <!-- 这是亮度值设置的按钮布局 -->
     <ImageButton
         android:id="@+id/exposure"
         android:layout_width="50dp"
         android:layout_height="50dp"
-        android:padding="5dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/exposure"
         android:src="@drawable/exposure"
         android:onClick="clickedExposure"
-        android:background="@null"
         />
 
-    <!-- 这是摄像照相功能切换按钮的布局 -->
     <ImageButton
         android:id="@+id/switch_video"
-        android:layout_width="100dp"
-        android:layout_height="100dp"
-        android:padding="25dp"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/switch_video"
         android:src="@drawable/switch_video"
         android:onClick="clickedSwitchVideo"
-        android:background="@null"
         />
 
-    <!-- 这是前后摄像头切换的按钮布局 -->
     <ImageButton
         android:id="@+id/switch_camera"
         android:layout_width="50dp"
         android:layout_height="50dp"
-        android:padding="5dp"
+        android:padding="10dp"
         android:scaleType="fitCenter"
         android:contentDescription="@string/switch_camera"
         android:src="@drawable/switch_camera"
         android:onClick="clickedSwitchCamera"
-        android:background="@null"
         />
 
-  	<!-- 这是删除按钮的布局  
-  		visibility属性：visible为可见、invisible为不可见、gone为隐藏-->
+    <!-- should be at left-most -->
     <ImageButton
         android:id="@+id/trash"
         android:layout_width="50dp"
@@ -188,7 +133,6 @@
         android:visibility="gone"
         />
 
-    <!-- 这是分享按钮的布局  -->
     <ImageButton
         android:id="@+id/share"
         android:layout_width="50dp"
@@ -201,27 +145,22 @@
         android:visibility="gone"
         />
 
-    <!-- 这是调亮度的滚动条的设置 -->
     <SeekBar
         android:id="@+id/seekbar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_toLeftOf="@id/take_photo"
+        android:layout_centerHorizontal="true"
         android:layout_centerVertical="true"
-        android:visibility="gone"
         />
 
-    <!-- 这是缩放滚动条的布局 -->
     <ZoomControls
         android:id="@+id/seekbar_zoom"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:layout_centerVertical="true"
-   
         />
 
-    <!-- 这应该是捕捉手势的容器 -->
     <FrameLayout
         android:id="@+id/prefs_container"
         android:layout_width="match_parent"
@@ -233,10 +172,8 @@
         android:id="@+id/locker"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_centerInParent="true" 
         />
 
-    <!-- layout_below为布局低于指定id控件-->
     <ScrollView
         android:id="@+id/popup_container"
         android:layout_width="wrap_content"

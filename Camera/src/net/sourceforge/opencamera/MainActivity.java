@@ -75,87 +75,47 @@ class MyDebug {
 
 public class MainActivity extends Activity {
 	private static final String TAG = "MainActivity";
-
-	private SensorManager mSensorManager = null;  //定义传感器
+	private SensorManager mSensorManager = null;
 	private Sensor mSensorAccelerometer = null;
 	private Sensor mSensorMagnetic = null;
-	/*a.获取系统服务（SENSOR_SERVICE)返回一个SensorManager 对象
-    sensormanager = (SensorManager)getSystemSeriver(SENSOR_SERVICE);
-b.通过SensorManager对象获取相应的Sensor类型的对象
-    sensorObject = sensormanager.getDefaultSensor(sensor Type);
-c.声明一个SensorEventListener 对象用于侦听Sensor 事件，并重载onSensorChanged方法
-     SensorEventListener sensorListener = new SensorEventListener(){
-      };
-d.注册相应的SensorService
-      sensormanager.registerListener(sensorListener, sensorObject, Sensor TYPE);
-e.销毁相应的SensorService
-     sensormanager.unregisterListener(sensorListener, sensorObject);
-
-f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
-   onSensorChanged(int sensor,float values[]) 方法在传感器值更改时调用。
-   该方法只对受此应用程序监视的传感器调用(更多内容见下文)。该方法的参数包括：一个整数，指示更改的传感器;一个浮点值数组，表示传感器数据本身。有些传感器只提供一个数据值，另一些则提供三个浮点值。方向和加速表传感器都提供三个数据值。
-当传感器的准确性更改时，将调用 onAccuracyChanged(int sensor,int accuracy) 方法。参数包括两个整数：一个表示传感器，另一个表示该传感器新的准确值。*/
-	
-	
-	//locationManager为定位服务，一般照片属性里边都会包含地址信息
 	private LocationManager mLocationManager = null;
 	private LocationListener locationListener = null;
-	
-	
-	private Preview preview = null; //定义preview类类
-	private int current_orientation = 0; //追踪方向信息
-	private OrientationEventListener orientationEventListener = null; //方向事件监听器
-	private boolean supports_auto_stabilise = false; //支持自动稳定属性   可能为检测手机硬件用
-	private boolean supports_force_video_4k = false;  //支持4Kvideo
-	private ArrayList<String> save_location_history = new ArrayList<String>();// 存储历史位置信息
-	private boolean camera_in_background = false; // 摄像机是否另外一个片段或对话框覆盖，用于控制用户操作的逻辑性
-    private GestureDetector gestureDetector;  //Adroid提供的手势监听类，可用于手势监听
-    private boolean screen_is_locked = false;  //屏幕是否被锁定，暂时不懂有啥用
-    
+	private Preview preview = null;
+	private int current_orientation = 0;
+	private OrientationEventListener orientationEventListener = null;
+	private boolean supports_auto_stabilise = false;
+	private boolean supports_force_video_4k = false;
+	private ArrayList<String> save_location_history = new ArrayList<String>();
+	private boolean camera_in_background = false; // whether the camera is covered by a fragment/dialog (such as settings or folder picker)
+    private GestureDetector gestureDetector;
+    private boolean screen_is_locked = false;
     private Map<Integer, Bitmap> preloaded_bitmap_resources = new Hashtable<Integer, Bitmap>();
-    //Map 集合类用于存储元素对（称作“键”和“值”），其中每个键映射到一个值，该实例预加载位图资源，用于加载照片
-    
-    private PopupView popup_view = null; //声明弹出视图实例
+    private PopupView popup_view = null;
 
-    //对于toast为没有焦点的，过一段时间会自动消失的弹出框
-    private ToastBoxer screen_locked_toast = new ToastBoxer(); //视图是否被锁定toast弹出框
-    ToastBoxer changed_auto_stabilise_toast = new ToastBoxer(); //是否为自动稳定toast弹出框
+    private ToastBoxer screen_locked_toast = new ToastBoxer();
+    ToastBoxer changed_auto_stabilise_toast = new ToastBoxer();
     
-    /*可以通过调用控件的setDrawingCacheEnabled（true）方法，开启绘图缓存功能，
-     * 在绘制View的时候把图像缓存起来，然后通过getDrawingCache（）方法获取这个缓存的Bitmap。
-     * 需要注意的是，当不再使用这个Bitmap时，需要调用destroyDrawingCache()方法，释放Bitmap资源。
-     * 由于在绘制View到屏幕时缓存图像会降低控件绘制的效率，
-     * 因此只会在需要使用View的图像缓存的时候才调用setDrawingCacheEnabled(true)方法开启图像缓存功能，
-     * 当不再使用图像缓存时需要调用setDrawingCacheEnabled(false) 关闭图像缓存功能。
-     * 这种方法在支持拖拽类型的应用中经常见到，在Android系统的Launcher应用中也使用了这种方法，
-     * 当用户拖拽应用的快捷图标时，获取到控件对应的Bitmap，然后操作这个Bitmap随着手指移动。*/
 	// for testing:
 	public boolean is_test = false;
 	public Bitmap gallery_bitmap = null;
 
-	
-	/*onCreate方法的参数是一个Bundle类型的参数。Bundle类型的数据与Map类型的数据相似，都是以key-value的形式存储数据的。
-  	 *从字面上看saveInsanceState，是保存实例状态的。实际上，saveInsanceState也就是保存Activity的状态的。*/
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		if( MyDebug.LOG ) {
 			Log.d(TAG, "onCreate");
 		}
-    	long time_s = System.currentTimeMillis();   //获取系统时间
+    	long time_s = System.currentTimeMillis();
 		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_main); //加载activity_main.XML文件用于视图加载
-		PreferenceManager.setDefaultValues(this, R.xml.preferences, false); //加载首选项设置，以后需要研究
+		setContentView(R.layout.activity_main);
+		PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
 		if( getIntent() != null && getIntent().getExtras() != null ) {
 			is_test = getIntent().getExtras().getBoolean("test_project");
 			if( MyDebug.LOG )
 				Log.d(TAG, "is_test: " + is_test);
 		}
-		
-		//SharedPreferences用于处理一个键值对
 		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-		
-		//用于管理设备上的activity，用于判断当前app状态
+
 		ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
 		if( MyDebug.LOG ) {
 			Log.d(TAG, "standard max memory = " + activityManager.getMemoryClass() + "MB");
@@ -177,11 +137,11 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		if( MyDebug.LOG )
 			Log.d(TAG, "supports_force_video_4k? " + supports_force_video_4k);
 
-        setWindowFlagsForCamera(); //为相机设置窗口标志
+        setWindowFlagsForCamera();
 
         // read save locations
         save_location_history.clear();
-        int save_location_history_size = sharedPreferences.getInt("save_location_history_size", 0);//获取键值
+        int save_location_history_size = sharedPreferences.getInt("save_location_history_size", 0);
 		if( MyDebug.LOG )
 			Log.d(TAG, "save_location_history_size: " + save_location_history_size);
         for(int i=0;i<save_location_history_size;i++) {
@@ -193,10 +153,9 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
         	}
         }
         // also update, just in case a new folder has been set
-		updateFolderHistory(); //更新文件夹历史
+		updateFolderHistory();
 		//updateFolderHistory("/sdcard/Pictures/OpenCameraTest");
 
-		//获取系统传感器服务
         mSensorManager = (SensorManager)getSystemService(Context.SENSOR_SERVICE);
 		if( mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null ) {
 			if( MyDebug.LOG )
@@ -217,16 +176,14 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 				Log.d(TAG, "no support for magnetic sensor");
 		}
 
-		//获取系统定位服务
 		mLocationManager = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
 
-		updateGalleryIcon();	//更新照片图标
-		clearSeekBar();		//初始化滚动条
+		updateGalleryIcon();
+		clearSeekBar();
 
-		preview = new Preview(this, savedInstanceState); //将当前activity状态作为参数传给preview以创建实例的
-		((ViewGroup) findViewById(R.id.preview)).addView(preview);	//不懂这样干的意义懂
+		preview = new Preview(this, savedInstanceState);
+		((ViewGroup) findViewById(R.id.preview)).addView(preview);
 		
-		//方向事件监听器，用于监听当前手机方向状态
 		orientationEventListener = new OrientationEventListener(this) {
 			@Override
 			public void onOrientationChanged(int orientation) {
@@ -234,10 +191,8 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			}
         };
 
-        
-        //开始操控照片图标布局
         View galleryButton = (View)findViewById(R.id.gallery);
-        galleryButton.setOnLongClickListener(new View.OnLongClickListener() {	//监听事件
+        galleryButton.setOnLongClickListener(new View.OnLongClickListener() {
 			@Override
 			public boolean onLongClick(View v) {
 				//preview.showToast(null, "Long click");
@@ -246,12 +201,8 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			}
         });
         
-        
-        //手势监听，用于监听当前手势
         gestureDetector = new GestureDetector(this, new MyGestureDetector());
         
-        
-        //判断是否为第一次进入,以下代码为控制第一次进入的提示区
         final String done_first_time_key = "done_first_time";
 		boolean has_done_first_time = sharedPreferences.contains(done_first_time_key);
         if( !has_done_first_time && !is_test ) {
@@ -266,14 +217,13 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			editor.apply();
         }
 
-        preloadIcons(R.array.flash_icons); //载入闪光灯状态按钮组信息
-        preloadIcons(R.array.focus_mode_icons);	//载入对焦选项按钮组信息
+        preloadIcons(R.array.flash_icons);
+        preloadIcons(R.array.focus_mode_icons);
 
 		if( MyDebug.LOG )
 			Log.d(TAG, "time for Activity startup: " + (System.currentTimeMillis() - time_s));
 	}
 	
-	//此方法用于载入获取到的选项信息到对应的键值
 	private void preloadIcons(int icons_id) {
     	long time_s = System.currentTimeMillis();
     	String [] icons = getResources().getStringArray(icons_id);
@@ -282,7 +232,7 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
     		if( MyDebug.LOG )
     			Log.d(TAG, "load resource: " + resource);
     		Bitmap bm = BitmapFactory.decodeResource(getResources(), resource);
-    		this.preloaded_bitmap_resources.put(resource, bm);  
+    		this.preloaded_bitmap_resources.put(resource, bm);
     	}
 		if( MyDebug.LOG ) {
 			Log.d(TAG, "time for preloadIcons: " + (System.currentTimeMillis() - time_s));
@@ -291,7 +241,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 	}
 	
 	@Override
-	//清除当前所有键值对信息
 	protected void onDestroy() {
 		if( MyDebug.LOG ) {
 			Log.d(TAG, "onDestroy");
@@ -308,14 +257,13 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 	}
 	
 	
-	@Override//Menu由两种形式，Option menu和Context menu。前者是按下设备的Menu硬按钮弹出，后者是长按widget弹出。
+	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		// Inflate the menu; this adds items to the action bar if it is present.
 		getMenuInflater().inflate(R.menu.main, menu);
 		return true;
 	}
 
-	//按钮监听方法，待研究
 	public boolean onKeyDown(int keyCode, KeyEvent event) { 
 		if( MyDebug.LOG )
 			Log.d(TAG, "onKeyDown: " + keyCode);
@@ -415,7 +363,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		}
 	};
 	
-	//传感器监事件
 	private SensorEventListener magneticListener = new SensorEventListener() {
 		@Override
 		public void onAccuracyChanged(Sensor sensor, int accuracy) {
@@ -423,11 +370,11 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 
 		@Override
 		public void onSensorChanged(SensorEvent event) {
-			preview.onMagneticSensorChanged(event); //待研究
+			preview.onMagneticSensorChanged(event);
 		}
 	};
 	
-	//设置当前位置监听事件
+	
 	private void setupLocationListener() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "setupLocationListener");
@@ -468,7 +415,7 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		}
 	}
 
-	@Override//开始加载显示方法，待研究的
+	@Override
     protected void onResume() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "onResume");
@@ -485,7 +432,7 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			setImmersiveMode(true);
 		}
 
-		layoutUI();	//首先加载ui界面
+		layoutUI();
 
 		updateGalleryIcon(); // update in case images deleted whilst idle
 
@@ -493,15 +440,15 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 
     }
 
-    @Override//pause状态为当前被一个控件覆盖，待研究
+    @Override
     protected void onPause() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "onPause");
         super.onPause();
-		closePopup(); //首先关闭弹出u
+		closePopup();
         mSensorManager.unregisterListener(accelerometerListener);
         mSensorManager.unregisterListener(magneticListener);
-        orientationEventListener.disable();   //方向监听失效
+        orientationEventListener.disable();
         if( this.locationListener != null ) {
             mLocationManager.removeUpdates(locationListener);
             locationListener = null;
@@ -511,21 +458,19 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		preview.onPause();
     }
 
-    
-    //此为代码控制布局的方法
     public void layoutUI() {
 		if( MyDebug.LOG )
 			Log.d(TAG, "layoutUI");
 		this.preview.updateUIPlacement();
-		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this); //获取用户喜好信息，即首选项
+		SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
 		String ui_placement = sharedPreferences.getString("preference_ui_placement", "ui_right");
-		boolean ui_placement_right = ui_placement.equals("ui_right");	//UI的放置是否在右边,反之为左边布局/
+		boolean ui_placement_right = ui_placement.equals("ui_right");
 		if( MyDebug.LOG )
 			Log.d(TAG, "ui_placement: " + ui_placement);
 		// new code for orientation fixed to landscape	
 		// the display orientation should be locked to landscape, but how many degrees is that?
-	    int rotation = this.getWindowManager().getDefaultDisplay().getRotation(); //屏幕的方向信息，即获取屏幕当前旋转值的
-	    int degrees = 0;	//定义度数
+	    int rotation = this.getWindowManager().getDefaultDisplay().getRotation();
+	    int degrees = 0;
 	    switch (rotation) {
 	    	case Surface.ROTATION_0: degrees = 0; break;
 	        case Surface.ROTATION_90: degrees = 90; break;
@@ -536,29 +481,26 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 	    // relative_orientation is clockwise from landscape-left
     	//int relative_orientation = (current_orientation + 360 - degrees) % 360;
     	int relative_orientation = (current_orientation + degrees) % 360;
-    	//以上均为获取屏幕当前位置状态，用以控制其他参数或视图
-    	
-    	
 		if( MyDebug.LOG ) {
 			Log.d(TAG, "    current_orientation = " + current_orientation);
 			Log.d(TAG, "    degrees = " + degrees);
 			Log.d(TAG, "    relative_orientation = " + relative_orientation);
 		}
 		int ui_rotation = (360 - relative_orientation) % 360;
-		preview.setUIRotation(ui_rotation);	//用于控制屏幕方向以控制照片方向
-		int align_left = RelativeLayout.ALIGN_LEFT;   //本元素和某元素左边缘对齐
-		int align_right = RelativeLayout.ALIGN_RIGHT;  //本元素和某元素右边缘对齐
+		preview.setUIRotation(ui_rotation);
+		int align_left = RelativeLayout.ALIGN_LEFT;
+		int align_right = RelativeLayout.ALIGN_RIGHT;
 		//int align_top = RelativeLayout.ALIGN_TOP;
 		//int align_bottom = RelativeLayout.ALIGN_BOTTOM;
-		int left_of = RelativeLayout.LEFT_OF;  //位于某元素左边
-		int right_of = RelativeLayout.RIGHT_OF;	//位于某元素右边
-		int above = RelativeLayout.ABOVE;	//将该控件的底部置于给定ID的控件之上
-		int below = RelativeLayout.BELOW;	//将该控件的底部置于给定ID的控件之下
-		int align_parent_left = RelativeLayout.ALIGN_PARENT_LEFT;	//如果为true,将该控件的左部与其父控件的左部对齐;
-		int align_parent_right = RelativeLayout.ALIGN_PARENT_RIGHT;	//如果为true,将该控件的左部与其父控件的右部对齐;
-		int align_parent_top = RelativeLayout.ALIGN_PARENT_TOP;	//如果为true,将该控件的顶部与其父控件的顶部对齐
-		int align_parent_bottom = RelativeLayout.ALIGN_PARENT_BOTTOM;	//如果为true,将该控件的底部与其父控件的底部对齐;
-		if( !ui_placement_right ) {//如果UI布局设置不在右边，则将上下反转过来，即布局反向
+		int left_of = RelativeLayout.LEFT_OF;
+		int right_of = RelativeLayout.RIGHT_OF;
+		int above = RelativeLayout.ABOVE;
+		int below = RelativeLayout.BELOW;
+		int align_parent_left = RelativeLayout.ALIGN_PARENT_LEFT;
+		int align_parent_right = RelativeLayout.ALIGN_PARENT_RIGHT;
+		int align_parent_top = RelativeLayout.ALIGN_PARENT_TOP;
+		int align_parent_bottom = RelativeLayout.ALIGN_PARENT_BOTTOM;
+		if( !ui_placement_right ) {
 			//align_top = RelativeLayout.ALIGN_BOTTOM;
 			//align_bottom = RelativeLayout.ALIGN_TOP;
 			above = RelativeLayout.BELOW;
@@ -566,110 +508,74 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			align_parent_top = RelativeLayout.ALIGN_PARENT_BOTTOM;
 			align_parent_bottom = RelativeLayout.ALIGN_PARENT_TOP;
 		}
-		
-		//代码布局区
 		{
-			//设置按钮
 			View view = findViewById(R.id.settings);
-			//新建改实例用于动态改变view布局，即可用声明的实例来操控view的布局，将修改好后的布局再用setLayoutPara修改
-			RelativeLayout.LayoutParams layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams(); 
-			
-			/*addRule(int verb, int anchor) ：该方法所设置节点的属性必须关联其它的兄弟节点或者属性为布尔值
-			 * （ 属性为布尔值时，anchor 为 RelativeLayout.TRUE 表示 true，anchor 为0表示 false），
-			 * 比如：addRule(RelativeLayout.ALIGN_LEFT, R.id.date) 就表示 RelativeLayout 
-			 * 中的相应节点放置在一个 id 值为 date 的兄弟节点的左边
-			 */
-			layoutParams.addRule(align_parent_left, 0);//经测试，其父视图为横置的，即为正常方向逆时针旋转90°
+			RelativeLayout.LayoutParams layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
+			layoutParams.addRule(align_parent_left, 0);
 			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
-			layoutParams.addRule(align_parent_top, 0);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
 			layoutParams.addRule(align_parent_bottom, 0);
-			layoutParams.addRule(above, R.id.switch_camera);
+			layoutParams.addRule(left_of, 0);
 			layoutParams.addRule(right_of, 0);
-//			layoutParams.height = 100;    //可用于修改当前view大小小
-//			layoutParams.width = 100;
 			view.setLayoutParams(layoutParams);
-			//设置当前view旋转角度数
-			view.setRotation(ui_rotation);   
-			
-			
-			
-			//图库按钮
+			view.setRotation(ui_rotation);
+	
 			view = findViewById(R.id.gallery);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_top, 0);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
 			layoutParams.addRule(align_parent_bottom, 0);
-			layoutParams.addRule(below, R.id.take_photo);
 			layoutParams.addRule(left_of, R.id.settings);
-			layoutParams.addRule(RelativeLayout.ALIGN_TOP, R.id.exposure_lock); //上边缘对齐
+			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			
-			//弹出选项栏按钮
 			view = findViewById(R.id.popup);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
-			layoutParams.addRule(align_parent_left, 0);
-//			layoutParams.addRule(left_of, R.id.gallery);
-//			layoutParams.addRule(right_of, 0);
-			view.setLayoutParams(layoutParams);
-			view.setRotation(ui_rotation);
-	
-			//设置笑脸识别按钮
-			view = findViewById(R.id.smile);
-			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_top, 0);
-			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
-			layoutParams.addRule(below, R.id.exposure);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
+			layoutParams.addRule(align_parent_bottom, 0);
+			layoutParams.addRule(left_of, R.id.gallery);
 			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
-			
-			//锁定曝光按钮光
+	
 			view = findViewById(R.id.exposure_lock);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_top, 0);
-			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
-			layoutParams.addRule(below, R.id.exposure);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
+			layoutParams.addRule(align_parent_bottom, 0);
+			layoutParams.addRule(left_of, R.id.popup);
 			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
-			view.setVisibility(View.GONE);
 			view.setRotation(ui_rotation);
 	
-			//曝光设置按钮
 			view = findViewById(R.id.exposure);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
-			layoutParams.addRule(align_parent_left, 0);
-			layoutParams.addRule(below, R.id.popup);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
+			layoutParams.addRule(align_parent_bottom, 0);
+			layoutParams.addRule(left_of, R.id.exposure_lock);
 			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			//摄像照相切换按钮
 			view = findViewById(R.id.switch_video);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
-			layoutParams.addRule(align_parent_top, 0);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
 			layoutParams.addRule(align_parent_bottom, 0);
 			layoutParams.addRule(left_of, R.id.exposure);
-			layoutParams.addRule(above, R.id.take_photo);
-			layoutParams.addRule(RelativeLayout.ALIGN_BOTTOM, R.id.settings);  //设置下边缘对齐
+			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			//前后摄像头切换按钮
 			view = findViewById(R.id.switch_camera);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_left, 0);
-			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
-			layoutParams.addRule(align_parent_top, 0);
+			layoutParams.addRule(align_parent_right, 0);
+			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
 			layoutParams.addRule(align_parent_bottom, 0);
-			layoutParams.addRule(above, R.id.popup);
+			layoutParams.addRule(left_of, R.id.switch_video);
 			layoutParams.addRule(right_of, 0);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			//删除按钮，屏幕上被隐藏了
 			view = findViewById(R.id.trash);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
@@ -679,7 +585,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			//分享按钮，被隐藏了
 			view = findViewById(R.id.share);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
@@ -689,18 +594,13 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			
-			//拍照按钮
 			view = findViewById(R.id.take_photo);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_left, 0);
-			layoutParams.addRule(align_parent_right, 0);
-			layoutParams.addRule(left_of, R.id.popup);
+			layoutParams.addRule(align_parent_right, RelativeLayout.TRUE);
 			view.setLayoutParams(layoutParams);
 			view.setRotation(ui_rotation);
 	
-			
-			//调焦距按钮,先设置为隐藏
 			view = findViewById(R.id.zoom);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_parent_left, 0);
@@ -708,10 +608,8 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			layoutParams.addRule(align_parent_top, 0);
 			layoutParams.addRule(align_parent_bottom, RelativeLayout.TRUE);
 			view.setLayoutParams(layoutParams);
-			view.setVisibility(View.GONE);
 			view.setRotation(180.0f); // should always match the zoom_seekbar, so that zoom in and out are in the same directions
 	
-			//焦距控制条，先隐藏吧，放界面上不好看
 			view = findViewById(R.id.zoom_seekbar);
 			layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			layoutParams.addRule(align_left, 0);
@@ -719,13 +617,13 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			layoutParams.addRule(above, R.id.zoom);
 			layoutParams.addRule(below, 0);
 			view.setLayoutParams(layoutParams);
-			view.setVisibility(View.GONE);
 		}
 		
 		{
 			// set seekbar info
 			View view = findViewById(R.id.seekbar);
 			view.setRotation(ui_rotation);
+
 			int width_dp = 0;
 			if( ui_rotation == 0 || ui_rotation == 180 ) {
 				width_dp = 300;
@@ -765,19 +663,14 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		}
 
 		{
-			//这是弹出设置窗口的布局
-			
 			View view = findViewById(R.id.popup_container);
 			RelativeLayout.LayoutParams layoutParams = (RelativeLayout.LayoutParams)view.getLayoutParams();
 			//layoutParams.addRule(left_of, R.id.popup);
-			layoutParams.addRule(left_of, R.id.take_photo);
-//			layoutParams.addRule(below, R.id.popup);
-			layoutParams.addRule(align_parent_bottom, 0);
-//			layoutParams.addRule(above, 0);
-//			layoutParams.addRule(align_parent_top, RelativeLayout.TRUE);
-			layoutParams.addRule(RelativeLayout.ALIGN_TOP, R.id.switch_video); //上边缘对齐
-//			layoutParams.addRule(above, R.id.smile);
-//			layoutParams.addRule(RelativeLayout.CENTER_VERTICAL);  //垂直居中
+			layoutParams.addRule(align_right, R.id.popup);
+			layoutParams.addRule(below, R.id.popup);
+			layoutParams.addRule(align_parent_bottom, RelativeLayout.TRUE);
+			layoutParams.addRule(above, 0);
+			layoutParams.addRule(align_parent_top, 0);
 			view.setLayoutParams(layoutParams);
 
 			view.setRotation(ui_rotation);
@@ -819,8 +712,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		}
     }
 
-    
-    //方向改变响应事件
     private void onOrientationChanged(int orientation) {
 		/*if( MyDebug.LOG ) {
 			Log.d(TAG, "onOrientationChanged()");
@@ -847,7 +738,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 	}
     
     @Override
-    //布局改变响应事件
     public void onConfigurationChanged(Configuration newConfig) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "onConfigurationChanged()");
@@ -857,14 +747,12 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
         super.onConfigurationChanged(newConfig);
     }
 
-    //点击拍照响应事件，可用于自动拍摄时的调用
     public void clickedTakePhoto(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedTakePhoto");
     	this.takePicture();
     }
 
-    //点击切换摄像头响应事件
     public void clickedSwitchCamera(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedSwitchCamera");
@@ -872,7 +760,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		this.preview.switchCamera();
     }
 
-    //点击摄像照相模式切换响应事件
     public void clickedSwitchVideo(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedSwitchVideo");
@@ -880,21 +767,18 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		this.preview.switchVideo(true, true);
     }
 
-    //闪光灯响应事件
     public void clickedFlash(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedFlash");
     	this.preview.cycleFlash();
     }
     
-    //对焦响应事件，很重要，以后笑脸手势识别需要修改此方法大
     public void clickedFocusMode(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedFocusMode");
     	this.preview.cycleFocusMode();
     }
 
-    //更新进度条
     void clearSeekBar() {
 		View view = findViewById(R.id.seekbar);
 		view.setVisibility(View.GONE);
@@ -902,7 +786,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		view.setVisibility(View.GONE);
     }
     
-    //设置曝光进度条
     void setSeekBarExposure() {
 		SeekBar seek_bar = ((SeekBar)findViewById(R.id.seekbar));
 		final int min_exposure = preview.getMinimumExposure();
@@ -910,7 +793,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		seek_bar.setProgress( preview.getCurrentExposure() - min_exposure );
     }
     
-    //点击曝光按钮响应事件
     public void clickedExposure(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedExposure");
@@ -940,7 +822,7 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 			});
 
 			ZoomControls seek_bar_zoom = (ZoomControls)findViewById(R.id.seekbar_zoom);
-//			seek_bar_zoom.setVisibility(View.VISIBLE);    //将下边加减控件隐藏
+			seek_bar_zoom.setVisibility(View.VISIBLE);
 			seek_bar_zoom.setOnZoomInClickListener(new View.OnClickListener(){
 	            public void onClick(View v){
 	            	preview.changeExposure(1, true);
@@ -957,25 +839,18 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		}
     }
     
-    //点击曝光锁定按钮响应事件
     public void clickedExposureLock(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedExposureLock");
     	this.preview.toggleExposureLock();
     }
     
-    public void clickedSmileSetting(View view){
-    	this.preview.toggleSmileSetting();
-    }
-    
-    //点击设置按钮响应事件
     public void clickedSettings(View view) {
 		if( MyDebug.LOG )
 			Log.d(TAG, "clickedSettings");
 		openSettings();
     }
 
-    //判断是否已有弹出框
     public boolean popupIsOpen() {
 		if( popup_view != null ) {
 			return true;
@@ -1057,8 +932,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
 		            	popup_container.getViewTreeObserver().removeGlobalOnLayoutListener(this);
 		            }
 
-		            
-		            //尺寸伸缩管理器 规定view可以在给定范围内自动调整自己的尺寸大小
 		            ScaleAnimation animation = new ScaleAnimation(0.0f, 1.0f, 0.0f, 1.0f, Animation.RELATIVE_TO_SELF, 1.0f, Animation.RELATIVE_TO_SELF, 0.0f);
 		    		animation.setDuration(100);
 		    		popup_container.setAnimation(animation);
@@ -1870,7 +1743,6 @@ f: SensorListener 接口是传感器应用程序的中心。它包括两个必需方法：
             broadcastFile(mediaStorageDir, false, false);
         }
 
-        //看
         // Create a media file name
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String index = "";
